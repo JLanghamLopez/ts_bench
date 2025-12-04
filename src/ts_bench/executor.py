@@ -14,7 +14,7 @@ from a2a.utils import new_agent_text_message, new_task
 from a2a.utils.errors import ServerError
 from pydantic import ValidationError
 
-from ts_bench.base_agent import GreenAgent
+from ts_bench.agents.base_agent import GreenAgent
 from ts_bench.types import EvalRequest
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,7 @@ class TSBenchExecutor(AgentExecutor):
             await self.agent.run_eval(req, updater)
             await updater.complete()
         except Exception as e:
-            print(f"Agent error: {e}")
+            logger.error(f"Agent error: {e}")
             await updater.failed(
                 new_agent_text_message(
                     f"Agent error: {e}", context_id=context.context_id
