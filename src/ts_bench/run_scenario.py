@@ -1,0 +1,214 @@
+import argparse
+import asyncio
+import logging
+import os
+import shlex
+import signal
+import subprocess
+import sys
+import time
+import tomllib
+from pathlib import Path
+
+import httpx
+from a2a.client import A2ACardResolver
+from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+load_dotenv(override=True)
+
+
+async def wait_for_agents(cfg: dict, timeout: int = 30) -> bool:
+    """Wait for all agents to be healthy and responding."""
+    endpoints = []
+
+    if cfg["participant"].get("cmd"):
+        endpoints.append(
+            f"http://{cfg['participant']['host']}:{cfg['participant']['port']}"
+        )
+
+    if cfg["green_agent"].get("cmd"):
+        endpoints.append(
+            f"http://{cfg['green_agent']['host']}:{cfg['green_agent']['port']}"
+        )
+
+    if not endpoints:
+        return True  # No agents to wait for
+
+    logger.info(f"Waiting for {len(endpoints)} agent(s) to be ready...")
+    start_time = time.time()
+
+    async def check_endpoint(endpoint: str) -> bool:
+        """Check if an endpoint is responding by fetching the agent card."""
+        try:
+            async with httpx.AsyncClient(timeout=2) as client:
+                resolver = A2ACardResolver(httpx_client=client, base_url=endpoint)
+                await resolver.get_agent_card()
+                return True
+        except Exception as e:
+            # Any exception means the agent is not ready
+            logger.error(f"{endpoint} : {e}")
+            return False
+
+    while time.time() - start_time < timeout:
+        ready_count = 0
+        for endpoint in endpoints:
+            if await check_endpoint(endpoint):
+                ready_count += 1
+
+        if ready_count == len(endpoints):
+            return True
+
+        logger.info(f"  {ready_count}/{len(endpoints)} agents ready, waiting...")
+        await asyncio.sleep(1)
+
+    logger.info(
+        (
+            f"Timeout: Only {ready_count}/{len(endpoints)} agents "
+            f"became ready after {timeout}s"
+        )
+    )
+    return False
+
+
+def parse_toml(scenario_path: str) -> dict:
+    path = Path(scenario_path)
+    if not path.exists():
+        print(f"Error: Scenario file not found: {path}")
+        sys.exit(1)
+
+    data = tomllib.loads(path.read_text())
+
+    def host_port(ep: str):
+        s = ep or ""
+        s = s.replace("http://", "").replace("https://", "")
+        s = s.split("/", 1)[0]
+        host, port = s.split(":", 1)
+        return host, int(port)
+
+    green_ep = data.get("green_agent", {}).get("endpoint", "")
+    g_host, g_port = host_port(green_ep)
+    green_cmd = data.get("green_agent", {}).get("cmd", "")
+
+    part_ep = data.get("participant", {}).get("endpoint", "")
+    part_host, part_port = host_port(part_ep)
+    part_cmd = data.get("participant", {}).get("cmd", "")
+
+    cfg = data.get("config", {})
+
+    return {
+        "green_agent": {"host": g_host, "port": g_port, "cmd": green_cmd},
+        "participant": {"host": part_host, "port": part_port, "cmd": part_cmd},
+        "config": cfg,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Run agent scenario")
+    parser.add_argument("scenario", help="Path to scenario TOML file")
+    parser.add_argument(
+        "--show-logs", action="store_true", help="Show agent stdout/stderr"
+    )
+    parser.add_argument(
+        "--serve-only",
+        action="store_true",
+        help="Start agent servers only without running evaluation",
+    )
+    args = parser.parse_args()
+
+    cfg = parse_toml(args.scenario)
+
+    sink = None if args.show_logs or args.serve_only else subprocess.DEVNULL
+    parent_bin = str(Path(sys.executable).parent)
+    base_env = os.environ.copy()
+    base_env["PATH"] = parent_bin + os.pathsep + base_env.get("PATH", "")
+
+    procs = []
+    try:
+        # Start participant agent
+        part_cmd_args = shlex.split(cfg["participant"].get("cmd", ""))
+        if part_cmd_args:
+            logger.info(
+                (
+                    f"Starting participant agent at {cfg['participant']['host']}"
+                    f":{cfg['participant']['port']}"
+                )
+            )
+            procs.append(
+                subprocess.Popen(
+                    part_cmd_args,
+                    env=base_env,
+                    stdout=sink,
+                    stderr=sink,
+                    text=True,
+                    start_new_session=True,
+                )
+            )
+
+        # Start green agent
+        green_cmd_args = shlex.split(cfg["green_agent"].get("cmd", ""))
+        if green_cmd_args:
+            logger.info(
+                (
+                    f"Starting green agent at {cfg['green_agent']['host']}"
+                    f":{cfg['green_agent']['port']}"
+                )
+            )
+            procs.append(
+                subprocess.Popen(
+                    green_cmd_args,
+                    env=base_env,
+                    stdout=sink,
+                    stderr=sink,
+                    text=True,
+                    start_new_session=True,
+                )
+            )
+
+        # Wait for all agents to be ready
+        if not asyncio.run(wait_for_agents(cfg)):
+            logger.error("Error: Not all agents became ready. Exiting.")
+            return
+
+        logger.info("Agents started. Press Ctrl+C to stop.")
+
+        if args.serve_only:
+            while True:
+                for proc in procs:
+                    if proc.poll() is not None:
+                        print(f"Agent exited with code {proc.returncode}")
+                        break
+                    time.sleep(0.5)
+        else:
+            client_proc = subprocess.Popen(
+                [sys.executable, "-m", "ts_bench.client_cli", args.scenario],
+                env=base_env,
+                start_new_session=True,
+            )
+            procs.append(client_proc)
+            client_proc.wait()
+
+    except KeyboardInterrupt:
+        pass
+
+    finally:
+        print("\nShutting down...")
+        for p in procs:
+            if p.poll() is None:
+                try:
+                    os.killpg(p.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+        time.sleep(1)
+        for p in procs:
+            if p.poll() is None:
+                try:
+                    os.killpg(p.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+
+
+if __name__ == "__main__":
+    main()

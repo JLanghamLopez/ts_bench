@@ -1,0 +1,11 @@
+[green_agent]
+endpoint = "http://127.0.0.1:9009"
+cmd = "python -m ts_bench.agents.ts_task_agent --host 127.0.0.1 --port 9009"
+
+[participant]
+endpoint = "http://127.0.0.1:9018"
+cmd = "python -m ts_bench.agents.benchmark_agent --host 127.0.0.1 --port 9018"
+
+[config]
+task_type = "time-series-forecasting"
+num_rounds = 3
