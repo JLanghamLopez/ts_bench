@@ -18,7 +18,8 @@ class TSTaskAgent(GreenAgent):
         pass
 
     def validate_request(self, request: EvalRequest) -> tuple[bool, str]:
-        pass
+        """TODO: Should check the request has the correct fields"""
+        return True, ""
 
 
 async def main():
