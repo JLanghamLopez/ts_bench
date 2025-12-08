@@ -11,13 +11,3 @@ class EvalRequest(BaseModel):
 class EvalResult(BaseModel):
     score: float
     feedback: str
-
-
-class TaskAssignment(BaseModel):
-    task_id: str
-    name: str
-    description: str
-    task_type: str
-    difficulty: str
-    data_url: HttpUrl
-    eval_fn_url: HttpUrl

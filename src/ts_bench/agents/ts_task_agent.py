@@ -3,7 +3,6 @@ import asyncio
 import contextlib
 import json
 import logging
-import os
 from pathlib import Path
 
 import uvicorn
@@ -14,15 +13,15 @@ from a2a.types import TaskState
 from a2a.utils import new_agent_text_message
 from litellm import acompletion
 
+from data.task_bank import TaskBank, TaskDefinition
 from ts_bench.agents.agent_card import ts_task_agent_card
 from ts_bench.agents.base_agent import GreenAgent
-from ts_bench.agents.task_bank import TaskBank, TaskDefinition
 from ts_bench.executor import TSBenchExecutor
-from ts_bench.experiment_types import EvalRequest, TaskAssignment
+from ts_bench.experiment_types import EvalRequest
 
 logger = logging.getLogger(__name__)
 
-USE_LLM_FEEDBACK = True
+USE_LLM_FEEDBACK = False
 
 ALLOWED_TASK_TYPES = {
     "time-series-forecasting",
@@ -30,13 +29,13 @@ ALLOWED_TASK_TYPES = {
 }
 
 METRICS_BY_TYPE: dict[str, list[str]] = {
-    "time-series-forecasting": ["rmse", "mae", "quantile_loss"],
-    "time-series-generation": ["sigw1", "auto_corr", "cross_corr"],
+    "time-series-forecasting": ["rmse", "mae", "mape"],
+    "time-series-generation": ["histloss", "auto_corr", "cross_corr"],
 }
 
 PRIMARY_METRIC: dict[str, str] = {
     "time-series-forecasting": "rmse",
-    "time-series-generation": "sigw1",
+    "time-series-generation": "histloss",
 }
 
 DIFFICULTY_WEIGHTS: dict[str, float] = {
@@ -49,8 +48,8 @@ DIFFICULTY_WEIGHTS: dict[str, float] = {
 METRIC_NORMALIZATION = {
     "rmse": {"a": 1.0, "b": 1.0},
     "mae": {"a": 1.0, "b": 1.0},
-    "quantile_loss": {"a": 1.0, "b": 1.0},
-    "sigw1": {"a": 1.0, "b": 1.0},
+    "mape": {"a": 1.0, "b": 1.0},
+    "histloss": {"a": 1.0, "b": 1.0},
     "auto_corr": {"a": 1.0, "b": 1.0},
     "cross_corr": {"a": 1.0, "b": 1.0},
 }
@@ -109,7 +108,7 @@ class TSTaskAgent(GreenAgent):
         """
         - Reads task_type from request.
         - Fetches one/all tasks of that type from TaskBank.
-        - Returns them as TaskAssignment objects.
+        - Returns them as TaskDefinition objects.
         """
 
         task_type: str = request.config["task_type"]
@@ -122,9 +121,9 @@ class TSTaskAgent(GreenAgent):
             ),
         )
 
-        tasks: list[TaskDefinition] = self.task_bank.get_tasks_by_type(task_type)
+        assignments: list[TaskDefinition] = self.task_bank.get_tasks_by_type(task_type)
 
-        if not tasks:
+        if not assignments:
             msg = f"No tasks available for task_type='{task_type}'."
             logger.warning(msg)
             await updater.update_status(
@@ -133,44 +132,18 @@ class TSTaskAgent(GreenAgent):
             )
             raise ValueError(msg)
 
-        assignments: list[TaskAssignment] = []
-
-        for t in tasks:
-            data_url = self.task_bank.get_presigned_url(
-                t.data_s3_key,
-                self.task_bank.s3_bucket,
-            )
-            eval_fn_url = self.task_bank.get_presigned_url(
-                t.eval_fn_s3_key,
-                self.task_bank.s3_bucket,
-            )
-
-            assignment = TaskAssignment(
-                task_id=t.task_id,
-                name=t.name,
-                description=t.description,
-                task_type=t.task_type,
-                difficulty=t.difficulty,
-                data_url=data_url,
-                eval_fn_url=eval_fn_url,
-            )
-            assignments.append(assignment)
-
         payload = [a.model_dump(mode="json") for a in assignments]
 
         logger.info(
-            "Assigned %d tasks for task_type='%s' to participant=%s. Details: %s",
-            len(assignments),
-            task_type,
-            request.participant,
-            json.dumps(payload, indent=2),
+            f"Assigned {len(assignments)} tasks for type='{task_type}'. "
+            f"Details: {json.dumps(payload, indent=2)}"
         )
 
         await updater.update_status(
             TaskState.working,
             new_agent_text_message(
                 f"Assigned {len(assignments)} tasks for type='{task_type}'. "
-                f"Details: {json.dumps(payload)}",
+                f"Details: {json.dumps(payload, indent=2)}",
                 context_id=updater.context_id,
             ),
         )
@@ -228,7 +201,6 @@ class TSTaskAgent(GreenAgent):
             per_task_evals[tid] = {
                 "task_id": tid,
                 "name": task_def.name,
-                "description": task_def.description,  # include task description for LLM
                 "difficulty": task_def.difficulty,
                 "raw_metrics": metrics_for_task,  # all metrics
                 "primary_eval": primary_eval,  # score computed on the primary metric
@@ -591,8 +563,6 @@ async def main():
         args.card_url or f"http://{args.host}:{args.port}/"
     )
 
-    s3_bucket_name = os.getenv("S3_BUCKET")
-
     file_dir = Path(__file__).resolve().parent
     proj_dir = file_dir.parents[2]
 
@@ -600,7 +570,6 @@ async def main():
 
     async with agent_url_cm as agent_url:
         task_bank = TaskBank(
-            s3_bucket=s3_bucket_name,
             tasks_json_path=str(tasks_json_path),
         )
         logger.info("TaskBank initialised with %d tasks.", len(task_bank._tasks_by_id))

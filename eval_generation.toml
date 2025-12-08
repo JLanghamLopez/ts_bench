@@ -11,24 +11,24 @@ task_type = "time-series-generation"
 
 # Evaluation mode: submit results for each task
 # Each result must have task_id and metrics dict
-# Required metrics for generation: sigw1, auto_corr, cross_corr
+# Required metrics for generation: histloss, auto_corr, cross_corr
 [[config.results]]
 task_id = "commodity_generation"
 [config.results.metrics]
-sigw1 = 0.052
+histloss = 0.052
 auto_corr = 0.034
 cross_corr = 0.041
 
 [[config.results]]
 task_id = "crypto_generation"
 [config.results.metrics]
-sigw1 = 0.048
+histloss = 0.048
 auto_corr = 0.031
 cross_corr = 0.038
 
 [[config.results]]
 task_id = "equity_generation"
 [config.results.metrics]
-sigw1 = 0.044
+histloss = 0.044
 auto_corr = 0.029
 cross_corr = 0.035
