@@ -46,7 +46,7 @@ The green agent (`TSTaskAgent`) operates in two modes:
 
 ## Developers
 
-### Installation
+## Installation
 
 Dependencies can be installed with [poetry](https://python-poetry.org/) by running
 
@@ -60,6 +60,16 @@ be activated with
 ```commandline
 source .venv/bin/activate
 ```
+
+## Running
+
+Run an example scenario locally using
+
+```commandline
+python -m ts_bench.run_scenario scenario.toml
+```
+
+## Developers
 
 ### Code Checks
 
