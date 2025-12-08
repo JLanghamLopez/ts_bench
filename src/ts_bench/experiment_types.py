@@ -3,10 +3,6 @@ from typing import Any
 from pydantic import BaseModel, HttpUrl
 
 
-class TaskRequest(BaseModel):
-    query: str # The text query from the purple agent for a task
-
-
 class EvalRequest(BaseModel):
     participant: HttpUrl
     config: dict[str, Any]

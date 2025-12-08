@@ -5,27 +5,17 @@ description = ""
 authors = []
 readme = "README.md"
 packages = [{include = "ts_bench", from = "src"}]
-requires-python = ">=3.10,<4.0"
+requires-python = ">=3.10"
 dependencies = [
     "a2a-sdk[http-server] (>=0.3.19,<0.4.0)",
     "uvicorn (>=0.38.0,<0.39.0)",
-    "litellm (>=1.80.7,<2.0.0)",
-    "boto3 (>=1.42.3,<2.0.0)",
-    "lancedb (>=0.25.3,<0.26.0)",
-    "python-dotenv (>=1.2.1,<2.0.0)",
-    "pydantic (>=2.12.5,<3.0.0)"
+    "dotenv (>=0.9.9,<0.10.0)"
 ]
 
 [tool.poetry]
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^4.5.0"
-
-
-[[tool.poetry.source]]
-name = "torch-cu126"
-url = "https://download.pytorch.org/whl/cu126"
-priority = "supplemental"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

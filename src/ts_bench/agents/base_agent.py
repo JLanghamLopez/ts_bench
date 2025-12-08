@@ -2,7 +2,7 @@ from abc import abstractmethod
 
 from a2a.server.tasks import TaskUpdater
 
-from ts_bench.types import EvalRequest
+from ts_bench.experiment_types import EvalRequest
 
 
 class GreenAgent:
