@@ -62,15 +62,19 @@ class TSTaskAgent(GreenAgent):
     """
     Green agent for time-series benchmark tasks.
 
+    Input:
+        EvalRequest with config["task_type"] in
+        {"time-series-forecasting", "time-series-generation"}
+
     Responsibilities:
     - Task assignment:
-        Input: EvalRequest with config["task_type"] in
-               {"forecasting", "generative-modelling"}
-        Return ALL tasks of that type (various difficulties) to the purple agent.
+        Retrieves ALL tasks of that type from the TaskBank
+        Constructs a structured assignment message and sends it to the participant
+        The participant agent must return a JSON object mapping:
+        { task_id: "/path/to/predictions.csv", ... }
     - Task evaluation:
-        Input: EvalRequest with config["task_id"] and predictions
-               (e.g. predictions.csv).
-        Run the appropriate evaluation script and report scores/feedback.
+        After receiving prediction paths, the agent loads each task's predictions,
+        And run the appropriate evaluation script and report scores/feedback.
     """
 
     def __init__(self, task_bank: TaskBank):
@@ -206,12 +210,14 @@ class TSTaskAgent(GreenAgent):
             "For each task below, you will receive a URL to download the task bundle.",
             "Each bundle contains:",
             "- Training data",
-            "- Test data (features only)",
+            "- Validation data",
+            "- Test data",
+            "- Evaluation metrics code",
             "- Task description and requirements",
             "",
             "You are expected to:",
             "1. Download and analyze each task bundle",
-            "2. Build and train your model on the training data",
+            "2. Build and train and tune your model on the training and validation data",
             "3. Generate predictions for the test data for EACH task.",
             "4. Return a JSON object mapping task_id to the file path of your predictions CSV."
             "",
