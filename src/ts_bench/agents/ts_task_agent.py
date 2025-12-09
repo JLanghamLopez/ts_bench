@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import asyncio
 import contextlib
@@ -13,35 +15,36 @@ from a2a.types import TaskState
 from a2a.utils import new_agent_text_message
 from litellm import acompletion
 
-from data.task_bank import TaskBank, TaskDefinition
+from data.task_bank import TaskBank, TaskDefinition, TaskDifficulty, TaskType
 from ts_bench.agents.agent_card import ts_task_agent_card
 from ts_bench.agents.base_agent import GreenAgent
 from ts_bench.executor import TSBenchExecutor
 from ts_bench.experiment_types import EvalRequest
+from ts_bench.tool_provider import ToolProvider
 
 logger = logging.getLogger(__name__)
 
 USE_LLM_FEEDBACK = False
 
-ALLOWED_TASK_TYPES = {
-    "time-series-forecasting",
-    "time-series-generation",
+ALLOWED_TASK_TYPES: set[TaskType] = {
+    TaskType.TIME_SERIES_FORECASTING,
+    TaskType.TIME_SERIES_GENERATION,
 }
 
-METRICS_BY_TYPE: dict[str, list[str]] = {
-    "time-series-forecasting": ["rmse", "mae", "mape"],
-    "time-series-generation": ["histloss", "auto_corr", "cross_corr"],
+METRICS_BY_TYPE: dict[TaskType, list[str]] = {
+    TaskType.TIME_SERIES_FORECASTING: ["rmse", "mae", "mape"],
+    TaskType.TIME_SERIES_GENERATION: ["histloss", "auto_corr", "cross_corr"],
 }
 
-PRIMARY_METRIC: dict[str, str] = {
-    "time-series-forecasting": "rmse",
-    "time-series-generation": "histloss",
+PRIMARY_METRIC: dict[TaskType, str] = {
+    TaskType.TIME_SERIES_FORECASTING: "rmse",
+    TaskType.TIME_SERIES_GENERATION: "histloss",
 }
 
-DIFFICULTY_WEIGHTS: dict[str, float] = {
-    "Easy": 1.0,
-    "Intermediate": 1.0,
-    "Advanced": 1.0,
+DIFFICULTY_WEIGHTS: dict[TaskDifficulty, float] = {
+    TaskDifficulty.EASY: 1.0,
+    TaskDifficulty.INTERMEDIATE: 1.0,
+    TaskDifficulty.ADVANCED: 1.0,
 }
 
 # score = 1 / (1 + a * loss^b)
@@ -72,185 +75,343 @@ class TSTaskAgent(GreenAgent):
 
     def __init__(self, task_bank: TaskBank):
         self.task_bank = task_bank
+        self._tool_provider = ToolProvider()
 
     async def run_eval(self, request: EvalRequest, updater: TaskUpdater) -> None:
+        """
+        Workflow:
+        1. Read task_type from request
+        2. Fetch all tasks of that type from TaskBank
+        3. Send detailed textual instructions to purple agent
+        4. Wait for purple agent to return predictions (path to .csv)
+        5. Run correct_fn.py to evaluate predictions
+        6. Return evaluation results
+        """
+
         logger.info("TSTaskAgent.run_eval started with request: %s", request)
 
-        # Check if it is task assignment request
-        if self._is_assignment_request(request):
-            await self._handle_task_assignment(request, updater)
-            return
+        task_type_str: str = request.config.get("task_type", "")
+        task_type = TaskType(task_type_str)
 
-        # Check if it is task evaluation request
-        if self._is_evaluation_request(request):
-            await self._handle_task_evaluation(request, updater)
-            return
-
-        # Fail
-        msg = (
-            "Invalid request: must contain either "
-            "'task_type' for task assignment or task_type + results for evaluation."
-        )
-
-        logger.warning("TSTaskAgent.run_eval: %s", msg)
-
-        await updater.update_status(
-            TaskState.failed,
-            new_agent_text_message(msg, context_id=updater.context_id),
-        )
-        raise ValueError(msg)
-
-    async def _handle_task_assignment(
-        self,
-        request: EvalRequest,
-        updater: TaskUpdater,
-    ) -> None:
-        """
-        - Reads task_type from request.
-        - Fetches one/all tasks of that type from TaskBank.
-        - Returns them as TaskDefinition objects.
-        """
-
-        task_type: str = request.config["task_type"]
-
+        # Fetch tasks and prepare assignment
         await updater.update_status(
             TaskState.working,
             new_agent_text_message(
-                f"Assigning time-series tasks for type='{task_type}'.",
+                f"Preparing task assignment for type='{task_type.value}'.",
                 context_id=updater.context_id,
             ),
         )
 
         assignments: list[TaskDefinition] = self.task_bank.get_tasks_by_type(task_type)
 
-        if not assignments:
-            msg = f"No tasks available for task_type='{task_type}'."
-            logger.warning(msg)
-            await updater.update_status(
-                TaskState.failed,
-                new_agent_text_message(msg, context_id=updater.context_id),
-            )
-            raise ValueError(msg)
-
-        payload = [a.model_dump(mode="json") for a in assignments]
+        # Create instruction message
+        assignment_msg = self._create_assignment_message(task_type, assignments)
 
         logger.info(
-            f"Assigned {len(assignments)} tasks for type='{task_type}'. "
-            f"Details: {json.dumps(payload, indent=2)}"
+            f"Assigning {len(assignments)} tasks for type={task_type.value}. "
+            f"Sending instructions to participant agent."
         )
 
         await updater.update_status(
             TaskState.working,
             new_agent_text_message(
-                f"Assigned {len(assignments)} tasks for type='{task_type}'. "
-                f"Details: {json.dumps(payload, indent=2)}",
+                (
+                    f"Sending {len(assignments)} task(s) to "
+                    f"participant agent for type='{task_type.value}'."
+                ),
                 context_id=updater.context_id,
             ),
         )
 
-    async def _handle_task_evaluation(
+        logger.info("Assignment Message: \n%s", assignment_msg)
+        # Send to purple agent and wait for predictions
+        try:
+            participant_url = str(request.participant)
+            raw_response = await self._tool_provider.talk_to_agent(
+                message=assignment_msg,
+                url=participant_url,
+                new_conversation=True,
+            )
+
+            logger.info("Received response from participant agent: %s", raw_response)
+
+            await updater.update_status(
+                TaskState.working,
+                new_agent_text_message(
+                    "Received prediction paths from participant. Starting evaluation.",
+                    context_id=updater.context_id,
+                ),
+            )
+
+            predictions_map = self._parse_predictions_mapping(raw_response, assignments)
+
+        except Exception as e:
+            msg = f"Failed to communicate with participant agent or parse response: {e}"
+            logger.error(msg)
+            await updater.update_status(
+                TaskState.working,
+                new_agent_text_message(msg, context_id=updater.context_id),
+            )
+            raise
+
+        # Run evaluation using desrired eval_fn
+        try:
+            evaluation_summary = await self._evaluate_predictions(
+                task_type=task_type,
+                predictions=predictions_map,
+                assignments=assignments,
+            )
+        except Exception as e:
+            msg = f"Evaluation failed for task_type='{task_type.value}': {e}"
+            logger.error(msg, exc_info=True)
+            await updater.update_status(
+                TaskState.working,
+                new_agent_text_message(msg, context_id=updater.context_id),
+            )
+            raise
+
+        # Return final evaluation results
+        final_score = evaluation_summary["final_score_0_to_10"]
+
+        logger.info(
+            "Evaluation complete for task_type='%s'. Final score: %.2f/10",
+            task_type.value,
+            final_score,
+        )
+
+        await updater.update_status(
+            TaskState.working,
+            new_agent_text_message(
+                f"Evaluation complete for task_type='{task_type.value}'. "
+                f"Final Score: {final_score:.2f}/10\n\n"
+                f"Evaluation Summary:\n{json.dumps(evaluation_summary, indent=2)}",
+                context_id=updater.context_id,
+            ),
+        )
+
+    def _create_assignment_message(
+        self, task_type: TaskType, assignments: list[TaskDefinition]
+    ) -> str:
+        """
+        Create a textual instruction message for the purple agent.
+        This tells them about the tasks and what's expected.
+        """
+        msg_lines = [
+            f"# Time Series Benchmark - {task_type.replace('-', ' ').title()} Tasks",
+            "",
+            f"You have been assigned {len(assignments)} task(s) for evaluation.",
+            "",
+            "## Instructions",
+            "",
+            "For each task below, you will receive a URL to download the task bundle.",
+            "Each bundle contains:",
+            "- Training data",
+            "- Test data (features only)",
+            "- Task description and requirements",
+            "",
+            "You are expected to:",
+            "1. Download and analyze each task bundle",
+            "2. Build and train your model on the training data",
+            "3. Generate predictions for the test data for EACH task.",
+            "4. Return a JSON object mapping task_id to the file path of your predictions CSV."
+            "",
+            "## Task List",
+            "",
+        ]
+
+        for i, task in enumerate(assignments, 1):
+            msg_lines.extend(
+                [
+                    f"### Task {i}: {task.name}",
+                    f"- **Task ID**: {task.task_id}",
+                    f"- **Type**: {task.task_type.value}",
+                    f"- **Difficulty**: {task.difficulty.value}",
+                    f"- **Data URL**: {task.url}",
+                    "",
+                ]
+            )
+
+        msg_lines.extend(
+            [
+                "## Submission Format",
+                "",
+                "Please return ONLY a single JSON object in the response",
+                "with the following structure:",
+                "",
+                "```json",
+                "{",
+                '  "<task_id_1>": "/path/to/predictions_task_1.csv",',
+                '  "<task_id_2>": "/path/to/predictions_task_2.csv"',
+                "}",
+                "```",
+                "",
+                "- Keys MUST be task_ids from the list above.",
+                "- Values MUST be the corresponding CSV file paths on remote filesystem.",
+                "- Each CSV should contain predictions ONLY for the corresponding task, in the proper format.",
+                "",
+            ]
+        )
+
+        return "\n".join(msg_lines)
+
+    def _parse_predictions_mapping(
         self,
-        request: EvalRequest,
-        updater: TaskUpdater,
-    ) -> None:
+        raw_response: str,
+        assignments: list[TaskDefinition],
+    ) -> dict[str, str]:
         """
-        For each task_id of that type:
-            take raw loss-like metric values
-            normalize per metric to [0,1]
-            average to per-task score
-            apply difficulty weight
-        Aggregate per-task weighted scores into a final score in [0,10].
-        Call LLM to generate feedback.
+        Parse participant response as JSON mapping: {task_id: csv_path}.
+        Only keep task_ids in the current assignment set.
         """
 
-        config = request.config
-        task_type = config["task_type"]
-        results = config["results"]
+        try:
+            clean = raw_response.strip()
+            if clean.startswith("```"):
+                clean = clean.strip("`")
+            data = json.loads(clean)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Participant response is not valid JSON: {e}. "
+                f"Expected a JSON object mapping task_id to CSV path."
+            )
 
-        await updater.update_status(
-            TaskState.working,
-            new_agent_text_message(
-                f"Starting evaluation for task_type='{task_type}'.",
-                context_id=updater.context_id,
-            ),
+        if not isinstance(data, dict):
+            raise ValueError(
+                "Participant response must be a JSON object mapping task_id to CSV path."
+            )
+
+        valid_task_ids = {t.task_id for t in assignments}
+        predictions: dict[str, str] = {}
+
+        for task_id, path in data.items():
+            if task_id not in valid_task_ids:
+                logger.warning(
+                    "Participant provided predictions for unknown task_id '%s'. "
+                    "which will be ignored.",
+                    task_id,
+                )
+                continue
+
+            if not isinstance(path, str) or not path.strip():
+                raise ValueError(
+                    f"Invalid CSV path for task_id='{task_id}': {path!r}. "
+                    "Must be a non-empty string."
+                )
+
+            predictions[task_id] = path.strip()
+
+        missing = valid_task_ids - set(predictions.keys())
+        if missing:
+            logger.warning(
+                "No predictions provided for the following assigned tasks: %s",
+                sorted(missing),
+            )
+
+        if not predictions:
+            raise ValueError("No valid task_id → CSV path mappings found in response.")
+
+        return predictions
+
+    async def _evaluate_predictions(
+        self,
+        task_type: TaskType,
+        predictions: dict[str, str],
+        assignments: list[TaskDefinition],
+    ) -> dict:
+        """
+        Run the correct_fn evaluation for the given task_type.
+        This is a placeholder that will call the appropriate evaluation function.
+
+        - Load predictions CSV from predictions[task_id]
+        - Call task-specific eval_fn (TODO) to compute raw_metrics
+        - Compute primary metric normalized score and difficulty-weighted score
+        """
+
+        logger.info(
+            "Running evaluation for task_type='%s' with %d tasks.",
+            task_type.value,
+            len(assignments),
         )
 
-        # get the list of tasks for this type
-        registered_tasks = self.task_bank.get_tasks_by_type(task_type)
-        tasks_by_id = {t.task_id: t for t in registered_tasks}
+        metric_names = METRICS_BY_TYPE[task_type]
+        primary_metric = PRIMARY_METRIC[task_type]
 
-        # submissions: {task_id: metrics}
-        submitted_metrics: dict[str, dict[str, float]] = {
-            item["task_id"]: {k: float(v) for k, v in item["metrics"].items()}
-            for item in results
-        }
+        per_task_evals: dict[str, dict] = {}
 
-        per_task_evals: dict[str, dict[str, object]] = {}
-        weighted_scores: list[float] = []
-        weights_sum: float = 0.0
+        for task in assignments:
+            pred_path = predictions.get(task.task_id)
+            logger.info(
+                "Evaluating task_id='%s', difficulty='%s', prediction_path='%s'",
+                task.task_id,
+                task.difficulty.value,
+                pred_path or "<missing>",
+            )
 
-        for tid, task_def in tasks_by_id.items():
-            metrics_for_task = submitted_metrics[tid]
+            if not pred_path:
+                # raw_metrics = {m: float("inf") for m in metric_names}
+                if task_type is TaskType.TIME_SERIES_FORECASTING:
+                    raw_metrics = {"rmse": 0.5, "mae": 0.4, "mape": 0.3}
+                else:
+                    raw_metrics = {"histloss": 0.6, "auto_corr": 0.5, "cross_corr": 0.4}
+            else:
+                # TODO: call correct eval_fn.py
+                # raw_metrics = await self._run_single_task_eval(task, pred_path, metric_names)
+                # Placeholder
+                if task_type is TaskType.TIME_SERIES_FORECASTING:
+                    raw_metrics = {"rmse": 0.5, "mae": 0.4, "mape": 0.3}
+                else:
+                    raw_metrics = {"histloss": 0.6, "auto_corr": 0.5, "cross_corr": 0.4}
 
             primary_eval = self._compute_primary_metric_score(
                 task_type=task_type,
-                difficulty=task_def.difficulty,
-                metrics=metrics_for_task,
+                difficulty=task.difficulty,
+                metrics=raw_metrics,
             )
 
-            per_task_evals[tid] = {
-                "task_id": tid,
-                "name": task_def.name,
-                "difficulty": task_def.difficulty,
-                "raw_metrics": metrics_for_task,  # all metrics
-                "primary_eval": primary_eval,  # score computed on the primary metric
+            per_task_evals[task.task_id] = {
+                "task_id": task.task_id,
+                "name": task.name,
+                "description": task.description,
+                "difficulty": task.difficulty.value,
+                "raw_metrics": raw_metrics,
+                "primary_eval": primary_eval,
+                "prediction_path": pred_path,
             }
 
-            weighted_scores.append(float(primary_eval["weighted_score"]))
-            weights_sum += primary_eval["difficulty_weight"]
+        # Aggregate scores
+        weighted_scores = [
+            v["primary_eval"]["weighted_score"] for v in per_task_evals.values()
+        ]
+        weights_sum = sum(
+            v["primary_eval"]["difficulty_weight"] for v in per_task_evals.values()
+        )
 
-        # aggregate difficulty-weighted scores
-        if not weighted_scores or weights_sum <= 0:
-            raise ValueError("No valid task scores to aggregate in evaluation.")
-        overall_weighted_score = sum(weighted_scores) / weights_sum  # in [0,1]
+        overall_weighted_score = (
+            sum(weighted_scores) / weights_sum if weights_sum > 0 else 0.0
+        )
+        final_score = max(0.0, min(10.0, 10.0 * overall_weighted_score))
 
-        # obtain final score in [0,10]
-        final_score_0_to_10 = max(0.0, min(10.0, 10.0 * overall_weighted_score))
-
-        evaluation_summary: dict[str, object] = {
-            "task_type": task_type,
-            "primary_metric": PRIMARY_METRIC[task_type],
-            "normalization_formula": "score = 1 / (1 + a * loss^b)",  # LLM needs this
-            "metric_normalization_params": METRIC_NORMALIZATION,
-            "difficulty_weights": DIFFICULTY_WEIGHTS,
-            "num_tasks": len(tasks_by_id),
+        evaluation_summary = {
+            "task_type": task_type.value,
+            "primary_metric": primary_metric,
+            "num_tasks": len(assignments),
             "per_task": per_task_evals,
             "overall_weighted_score_0_to_1": overall_weighted_score,
-            "final_score_0_to_10": final_score_0_to_10,
+            "final_score_0_to_10": final_score,
+            # for LLM feedback prompt
+            "metric_normalization_params": METRIC_NORMALIZATION,
+            "difficulty_weights": {d.value: w for d, w in DIFFICULTY_WEIGHTS.items()},
         }
 
-        # generate LLM-based feedback
-        feedback: str | None = None
-        try:
-            feedback = await self._generate_feedback(task_type, evaluation_summary)
-            if feedback:
-                evaluation_summary["feedback"] = feedback
-        except Exception as e:
-            logger.warning("LLM feedback generation failed: %s", e)
+        if USE_LLM_FEEDBACK:
+            try:
+                feedback = await self._generate_feedback(task_type, evaluation_summary)
+                if feedback:
+                    evaluation_summary["feedback"] = feedback
+            except Exception as e:
+                logger.warning("LLM feedback generation failed: %s", e)
 
-        logger.info(
-            f"Evaluation complete for task_type='{task_type}'. "
-            f"Evaluation Summary: {json.dumps(evaluation_summary, indent=2)}"
-        )
-
-        await updater.update_status(
-            TaskState.working,
-            new_agent_text_message(
-                f"Evaluation complete for task_type='{task_type}'. "
-                f"Evaluation Summary: \n {json.dumps(evaluation_summary, indent=2)}",
-                context_id=updater.context_id,
-            ),
-        )
+        return evaluation_summary
 
     def _normalize_metric(
         self,
@@ -271,12 +432,8 @@ class TSTaskAgent(GreenAgent):
         cfg = METRIC_NORMALIZATION.get(metric_name)
 
         # default to a=b=1
-        if cfg is None:
-            a = 1.0
-            b = 1.0
-        else:
-            a = float(cfg.get("a", 1.0))
-            b = float(cfg.get("b", 1.0))
+        a = float(cfg.get("a", 1.0)) if cfg else 1.0
+        b = float(cfg.get("b", 1.0)) if cfg else 1.0
 
         # s = 1 / (1 + a * value^b) in (0,1]
         s = 1.0 / (1.0 + a * (raw_value**b))
@@ -284,22 +441,17 @@ class TSTaskAgent(GreenAgent):
 
     def _compute_primary_metric_score(
         self,
-        task_type: str,
-        difficulty: str,
+        task_type: TaskType,
+        difficulty: TaskDifficulty,
         metrics: dict[str, float],
     ) -> dict:
         """
         Compute normalized + weighted score from the PRIMARY_METRIC.
-        Other metrics are not normalized for scoring, but are included
-        in the evaluation summary for LLM feedback.
         """
-
         primary = PRIMARY_METRIC[task_type]
         raw_value = float(metrics[primary])
 
-        # normalize using METRIC_NORMALIZATION
         normalized_score = self._normalize_metric(primary, raw_value)
-
         weight = DIFFICULTY_WEIGHTS.get(difficulty, 1.0)
         weighted = normalized_score * weight
 
@@ -311,7 +463,9 @@ class TSTaskAgent(GreenAgent):
             "weighted_score": weighted,
         }
 
-    async def _generate_feedback(self, task_type: str, summary: dict) -> str | None:
+    async def _generate_feedback(
+        self, task_type: TaskType, summary: dict
+    ) -> str | None:
         if not USE_LLM_FEEDBACK:
             return None
 
@@ -319,41 +473,41 @@ class TSTaskAgent(GreenAgent):
         score = summary["final_score_0_to_10"]
 
         prompt = f"""
-    You are an expert evaluator for time-series machine learning models.
+You are an expert evaluator for time-series machine learning models.
 
-    The task_type is: '{task_type}'.
+The task_type is: '{task_type.value}'.
 
-    PRIMARY METRIC FOR SCORING:
-    - {primary}
+PRIMARY METRIC FOR SCORING:
+- {primary}
 
-    NORMALIZATION METHOD:
-    score = 1 / (1 + a * loss^b)
-    Normalization parameters per metric:
-    {json.dumps(summary["metric_normalization_params"], indent=2)}
+NORMALIZATION METHOD:
+score = 1 / (1 + a * loss^b)
+Normalization parameters per metric:
+{json.dumps(summary["metric_normalization_params"], indent=2)}
 
-    DIFFICULTY WEIGHTS:
-    {json.dumps(summary["difficulty_weights"], indent=2)}
+DIFFICULTY WEIGHTS:
+{json.dumps(summary["difficulty_weights"], indent=2)}
 
-    FINAL SCORE:
-    - {score:.2f} out of 10
+FINAL SCORE:
+- {score:.2f} out of 10
 
-    PER-TASK DETAILS (including descriptions and ALL raw metrics):
-    {json.dumps(summary["per_task"], indent=2)}
+PER-TASK DETAILS (including descriptions and ALL raw metrics):
+{json.dumps(summary["per_task"], indent=2)}
 
-    Please provide:
-    1. A summary of the participant's strengths.
-    2. Weaknesses, focusing on trends in metrics.
-    3. Insights about performance across difficulties.
-    4. Actionable improvement suggestions.
-    5. DO NOT repeat raw numbers exactly — interpret them qualitatively.
-    6. Reference secondary metrics (MAE, QuantileLoss, VAR, CrossCorr)
-       to support your reasoning.
+Please provide:
+1. A summary of the participant's strengths.
+2. Weaknesses, focusing on trends in metrics.
+3. Insights about performance across difficulties.
+4. Actionable improvement suggestions.
+5. DO NOT repeat raw numbers exactly — interpret them qualitatively.
+6. Reference secondary metrics (MAE, MAPE, AutoCorr, CrossCorr)
+   to support your reasoning.
 
-    ENSURE that your feedback if **complete**
-    """
+ENSURE that your feedback is complete.
+"""
 
         response = await acompletion(
-            model="gpt-4o-mini",  # "bedrock/amazon.titan-text-lite-v1"
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=1000,
             temperature=0.2,
@@ -362,186 +516,29 @@ class TSTaskAgent(GreenAgent):
         msg = response["choices"][0]["message"]["content"]
         return msg if isinstance(msg, str) else json.dumps(msg)
 
-    # legacy helper: average all the normalized scores
-    def _compute_task_score(
-        self,
-        task_type: str,
-        difficulty: str,
-        metric_values: dict[str, float],
-    ) -> dict[str, float | dict[str, float]]:
-        """
-        Given raw metric values for a single task, compute:
-
-        (1) per-metric normalized scores in (0,1]
-        (2) averaged score in (0,1]
-        (3) difficulty-weighted score in (0, +inf) (will be scaled later)
-        """
-
-        metric_names = METRICS_BY_TYPE[task_type]
-
-        # normalize each metric
-        normalized_scores: dict[str, float] = {}
-        for m in metric_names:
-            raw = float(metric_values[m])
-            normalized_scores[m] = self._normalize_metric(m, raw)
-
-        # average per-metric scores to overall score
-        if not normalized_scores:
-            raise ValueError("No metrics to aggregate for task scoring.")
-        avg_score = sum(normalized_scores.values()) / len(normalized_scores)
-
-        # difficulty weight
-        weight = DIFFICULTY_WEIGHTS.get(difficulty, 1.0)
-        weighted_score = avg_score * weight
-
-        return {
-            "avg_score": avg_score,
-            "weighted_score": weighted_score,
-            "per_metric_scores": normalized_scores,
-        }
-
-    def _is_assignment_request(self, request: EvalRequest) -> bool:
-        """
-        Assignment request: config has task_type, no results.
-        """
-
-        config = request.config or {}
-        return "task_type" in config and "results" not in config
-
-    def _is_evaluation_request(self, request: EvalRequest) -> bool:
-        """
-        Evaluation request: has task_type and results (structure is checked separately).
-        """
-
-        config = request.config or {}
-        return "task_type" in config and "results" in config
-
-    def _validate_evaluation_config(self, config: dict) -> tuple[bool, str]:
-        """
-        Structure validation for evaluation request.
-
-        Expected:
-        {
-            "task_type": <str in ALLOWED_TASK_TYPES>,
-            "results": [
-                {
-                    "task_id": <str>,
-                    "metrics": {
-                        <metric_name>: <float>,
-                        ...
-                    }
-                },
-                ...
-            ]
-        }
-        """
-        task_type = config.get("task_type")
-        if task_type not in ALLOWED_TASK_TYPES:
-            return (
-                False,
-                f"'task_type' must be one of {ALLOWED_TASK_TYPES}, got {task_type!r}",
-            )
-
-        expected_metrics = METRICS_BY_TYPE.get(task_type)
-        if not expected_metrics:
-            return False, f"No expected metrics configured for task_type='{task_type}'."
-
-        results = config.get("results")
-        if not isinstance(results, list) or not results:
-            return False, "'results' must be a non-empty list."
-
-        seen_task_ids: set[str] = set()
-
-        for idx, item in enumerate(results):
-            if not isinstance(item, dict):
-                return False, f"results[{idx}] must be a dict."
-
-            tid = item.get("task_id")
-            if not isinstance(tid, str) or not tid.strip():
-                return False, f"results[{idx}].task_id must be a non-empty string."
-
-            if tid in seen_task_ids:
-                return False, f"Duplicate task_id in results: {tid}"
-            seen_task_ids.add(tid)
-
-            metrics = item.get("metrics")
-            if not isinstance(metrics, dict) or not metrics:
-                return False, f"results[{idx}].metrics must be a non-empty dict."
-
-            # Check required metrics are present and numeric
-            for m in expected_metrics:
-                if m not in metrics:
-                    return False, (
-                        f"results[{idx}] for task_id={tid} is missing metric '{m}'. "
-                        f"Expected metrics: {expected_metrics}"
-                    )
-                v = metrics[m]
-                if not isinstance(v, (int, float)):
-                    return False, (
-                        f"Metric '{m}' for task_id={tid} must be numeric, "
-                        f"got {type(v).__name__}."
-                    )
-                if v < 0:
-                    return False, f"Metric '{m}' must be non-negative."
-
-        # Check task_ids exist in TaskBank for that task_type
-        registered_tasks = self.task_bank.get_tasks_by_type(task_type)
-        registered_ids = {t.task_id for t in registered_tasks}
-        if not registered_ids:
-            return False, f"No tasks registered for task_type='{task_type}'."
-
-        unknown_ids = seen_task_ids - registered_ids
-        if unknown_ids:
-            return (
-                False,
-                f"Unknown task_ids for task_type='{task_type}': {sorted(unknown_ids)}",
-            )
-
-        # Check all task_ids has evaluation results
-        missing_ids = registered_ids - seen_task_ids
-        if missing_ids:
-            return False, (
-                "Evaluation results missing some required tasks for task_type="
-                f"'{task_type}': {sorted(missing_ids)}"
-            )
-
-        return True, "Valid evaluation request."
-
     def validate_request(self, request: EvalRequest) -> tuple[bool, str]:
         """
-        Validate EvalRequest for both task assignment and evaluation.
-
-        - task assignment: task_type in config, no results.
-        - evaluation: task_type + results with proper metrics.
+        Validate EvalRequest: check that task_type is provided and tasks exist.
         """
-
         config = request.config or {}
+        task_type_str = config.get("task_type")
 
-        # task assignment request
-        if self._is_assignment_request(request):
-            task_type = config.get("task_type")
-            if not isinstance(task_type, str) or not task_type.strip():
-                return False, "'task_type' must be a non-empty string."
+        if not isinstance(task_type_str, str) or not task_type_str.strip():
+            return False, "'task_type' must be a non-empty string."
 
-            if task_type not in ALLOWED_TASK_TYPES:
-                return False, f"'task_type' must be one of {ALLOWED_TASK_TYPES}"
+        try:
+            task_type = TaskType(task_type_str)
+        except ValueError:
+            return (
+                False,
+                f"'task_type' must be one of {[t.value for t in TaskType]}",
+            )
 
-            tasks = self.task_bank.get_tasks_by_type(task_type)
-            if not tasks:
-                return False, f"No tasks available for task_type='{task_type}'."
+        tasks = self.task_bank.get_tasks_by_type(task_type)
+        if not tasks:
+            return False, f"No tasks available for task_type='{task_type.value}'."
 
-            return True, "Valid task assignment request."
-
-        # scoring request
-        if self._is_evaluation_request(request):
-            ok, msg = self._validate_evaluation_config(config)
-            return ok, msg
-
-        return False, (
-            "Invalid request: must contain either "
-            "'task_type' in config for task assignment, or "
-            "'task_type' + 'results for evaluation."
-        )
+        return True, "Valid request."
 
 
 async def main():

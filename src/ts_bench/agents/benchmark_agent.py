@@ -1,19 +1,74 @@
 import argparse
 import asyncio
 import contextlib
+import json
+import logging
 
 import uvicorn
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
-from a2a.server.tasks import InMemoryTaskStore
-from a2a.types import AgentCapabilities, AgentCard
+from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
+from a2a.types import (
+    AgentCapabilities,
+    AgentCard,
+    InvalidParamsError,
+    TaskState,
+)
+from a2a.utils import new_agent_text_message, new_task
+from a2a.utils.errors import ServerError
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
 class BaselineExecutorExecutor(AgentExecutor):
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
-        pass
+        msg_obj = context.get_user_input()
+
+        logger.info(f"Participant agent received raw user_input object: {msg_obj}")
+
+        msg = context.message
+
+        logger.info(f"Participant agent received context.message: {msg}")
+        if msg is None:
+            raise ServerError(error=InvalidParamsError(message="Missing message."))
+        task = new_task(msg)
+        await event_queue.enqueue_event(task)
+
+        updater = TaskUpdater(event_queue, task.id, task.context_id)
+
+        await updater.update_status(
+            TaskState.working,
+            new_agent_text_message(
+                "Participant received assignment. Generating deterministic predictions...",
+                context_id=context.context_id,
+            ),
+        )
+
+        predictions = {
+            "commodity_forecasting": "/tmp/a.csv",
+            "equity_forecasting": "/tmp/b.csv",
+            "fx_forecasting": "/tmp/c.csv",
+        }
+
+        final_message = new_agent_text_message(
+            json.dumps(predictions),
+            context_id=task.context_id,
+        )
+
+        await updater.update_status(
+            TaskState.working,
+            new_agent_text_message(
+                json.dumps(predictions),
+                context_id=context.context_id,
+            ),
+        )
+
+        await event_queue.enqueue_event(final_message)
+
+        await updater.complete()
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         pass
@@ -61,6 +116,7 @@ async def main():
             agent_card=agent_card,
             http_handler=request_handler,
         )
+        logger.info("Participant agent started")
 
         uvicorn_config = uvicorn.Config(server.build(), host=args.host, port=args.port)
         uvicorn_server = uvicorn.Server(uvicorn_config)
