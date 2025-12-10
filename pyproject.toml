@@ -5,11 +5,12 @@ description = ""
 authors = []
 readme = "README.md"
 packages = [{include = "ts_bench", from = "src"}]
-requires-python = ">=3.10"
+requires-python = ">=3.10,<4.0"
 dependencies = [
     "a2a-sdk[http-server] (>=0.3.19,<0.4.0)",
     "uvicorn (>=0.38.0,<0.39.0)",
-    "dotenv (>=0.9.9,<0.10.0)"
+    "dotenv (>=0.9.9,<0.10.0)",
+    "litellm (>=1.80.9,<2.0.0)"
 ]
 
 [tool.poetry]
