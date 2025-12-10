@@ -69,7 +69,7 @@ class TSTaskAgent(GreenAgent):
     Responsibilities:
     - Task assignment:
         Retrieves ALL tasks of that type from the TaskBank
-        Constructs a structured assignment message and sends it to the participant
+        Constructs a structured assignment message and sends it to the participant.
         The participant agent must return a JSON object mapping:
         { task_id: "/path/to/predictions.csv", ... }
     - Task evaluation:
@@ -149,45 +149,42 @@ class TSTaskAgent(GreenAgent):
 
             predictions_map = self._parse_predictions_mapping(raw_response, assignments)
 
+            # Run evaluation using desired eval_fn
+            try:
+                evaluation_summary = await self._evaluate_predictions(
+                    task_type=task_type,
+                    predictions=predictions_map,
+                    assignments=assignments,
+                )
+                logger.info(
+                    "Evaluation complete for task_type='%s'. Final score: %.2f/10",
+                    task_type.value,
+                    evaluation_summary["final_score_0_to_10"],
+                )
+            except Exception as e:
+                msg = f"Evaluation failed for task_type='{task_type.value}': {e}"
+                logger.error(msg, exc_info=True)
+                await updater.update_status(
+                    TaskState.failed,
+                    new_agent_text_message(msg, context_id=updater.context_id),
+                )
+
         except Exception as e:
             msg = f"Failed to communicate with participant agent or parse response: {e}"
             logger.error(msg)
             await updater.update_status(
-                TaskState.working,
+                TaskState.failed,
                 new_agent_text_message(msg, context_id=updater.context_id),
             )
-            raise
-
-        # Run evaluation using desrired eval_fn
-        try:
-            evaluation_summary = await self._evaluate_predictions(
-                task_type=task_type,
-                predictions=predictions_map,
-                assignments=assignments,
-            )
-        except Exception as e:
-            msg = f"Evaluation failed for task_type='{task_type.value}': {e}"
-            logger.error(msg, exc_info=True)
-            await updater.update_status(
-                TaskState.working,
-                new_agent_text_message(msg, context_id=updater.context_id),
-            )
-            raise
+            # If we've no response then just
+            return
 
         # Return final evaluation results
-        final_score = evaluation_summary["final_score_0_to_10"]
-
-        logger.info(
-            "Evaluation complete for task_type='%s'. Final score: %.2f/10",
-            task_type.value,
-            final_score,
-        )
-
         await updater.update_status(
             TaskState.working,
             new_agent_text_message(
                 f"Evaluation complete for task_type='{task_type.value}'. "
-                f"Final Score: {final_score:.2f}/10\n\n"
+                f"Final Score: {evaluation_summary['final_score_0_to_10']:.2f}/10\n\n"
                 f"Evaluation Summary:\n{json.dumps(evaluation_summary, indent=2)}",
                 context_id=updater.context_id,
             ),
@@ -339,7 +336,6 @@ class TSTaskAgent(GreenAgent):
             len(assignments),
         )
 
-        metric_names = METRICS_BY_TYPE[task_type]
         primary_metric = PRIMARY_METRIC[task_type]
 
         per_task_evals: dict[str, dict] = {}
