@@ -15,7 +15,7 @@ from a2a.types import (
 )
 
 from ts_bench.client import send_message
-from ts_bench.types import EvalRequest
+from ts_bench.experiment_types import EvalRequest
 
 logger = logging.getLogger(__name__)
 

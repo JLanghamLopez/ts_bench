@@ -40,17 +40,19 @@ async def wait_for_agents(cfg: dict, timeout: int = 30) -> bool:
     logger.info(f"Waiting for {len(endpoints)} agent(s) to be ready...")
     start_time = time.time()
 
-    async def check_endpoint(endpoint: str) -> bool:
+    async def check_endpoint(_endpoint: str) -> bool:
         """Check if an endpoint is responding by fetching the agent card."""
         try:
             async with httpx.AsyncClient(timeout=2) as client:
-                resolver = A2ACardResolver(httpx_client=client, base_url=endpoint)
+                resolver = A2ACardResolver(httpx_client=client, base_url=_endpoint)
                 await resolver.get_agent_card()
                 return True
         except Exception as e:
             # Any exception means the agent is not ready
-            logger.error(f"{endpoint} : {e}")
+            logger.error(f"{_endpoint} : {e}")
             return False
+
+    ready_count = 0
 
     while time.time() - start_time < timeout:
         ready_count = 0

@@ -15,7 +15,7 @@ from a2a.utils.errors import ServerError
 from pydantic import ValidationError
 
 from ts_bench.agents.base_agent import GreenAgent
-from ts_bench.types import EvalRequest
+from ts_bench.experiment_types import EvalRequest
 
 logger = logging.getLogger(__name__)
 
