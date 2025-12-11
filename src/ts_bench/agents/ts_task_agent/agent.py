@@ -65,8 +65,8 @@ class TSTaskAgent(GreenAgent):
         Workflow:
         1. Read task_type from request
         2. Fetch all tasks of that type from TaskBank
-        3. Send detailed textual instructions to purple agent
-        4. Wait for purple agent to return predictions (path to .csv)
+        3. In turn send each task as a textual instructions to purple agent
+        4. Wait for purple agent to return prediction (path to .csv)
         5. Run correct_fn.py to evaluate predictions
         6. Return evaluation results
         """
@@ -146,10 +146,10 @@ class TSTaskAgent(GreenAgent):
                     )
 
                 except Exception as e:
-                    msg = f"Evaluation failed for task_type='{task_type.value}': {e}"
+                    msg = f"Evaluation failed for task number {i}': {e}"
                     logger.error(msg, exc_info=True)
                     await updater.update_status(
-                        TaskState.failed,
+                        TaskState.working,
                         new_agent_text_message(msg, context_id=updater.context_id),
                     )
                     evaluation_result = failed_result(response, task)

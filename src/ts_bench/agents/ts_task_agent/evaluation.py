@@ -95,18 +95,13 @@ async def evaluate_predictions(
     )
 
     # TODO: call correct eval_fn.py
-    # raw_metrics = await self._run_single_task_eval(task, pred_path, metric_names)
     # Placeholder
     if task_type is TaskType.TIME_SERIES_FORECASTING:
         raw_metrics = {"rmse": 0.5, "mae": 0.4, "mape": 0.3}
+        primary_eval = raw_metrics["rmse"]
     else:
         raw_metrics = {"histloss": 0.6, "auto_corr": 0.5, "cross_corr": 0.4}
-
-    primary_eval = _compute_primary_metric_score(
-        task_type=task_type,
-        difficulty=assignment.task.difficulty,
-        metrics=raw_metrics,
-    )
+        primary_eval = raw_metrics["histloss"]
 
     result = TaskResult(
         task_id=assignment.task_id,
