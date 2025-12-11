@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
-import json
 import logging
 from pathlib import Path
 
@@ -11,7 +10,7 @@ import uvicorn
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
-from a2a.types import TaskState
+from a2a.types import Part, TaskState, TextPart
 from a2a.utils import new_agent_text_message
 
 from data.task_bank import TaskBank, TaskDefinition, TaskType
@@ -21,7 +20,7 @@ from ts_bench.executor import TSBenchExecutor
 from ts_bench.experiment_types import EvalRequest
 from ts_bench.tool_provider import ToolProvider
 
-from .evaluation import evaluate_predictions
+from .evaluation import aggregate_scores, evaluate_predictions, failed_result
 from .task import create_assignment_message
 from .utils import check_response
 
@@ -88,6 +87,8 @@ class TSTaskAgent(GreenAgent):
 
         assignments: list[TaskDefinition] = self.task_bank.get_tasks_by_type(task_type)
 
+        results = []
+
         # Submit each task in turn
         for i, task in enumerate(assignments):
             # Create instruction message
@@ -134,15 +135,14 @@ class TSTaskAgent(GreenAgent):
                 )
 
                 try:
-                    evaluation_summary = await evaluate_predictions(
-                        task_type=task_type,
-                        predictions=response,
-                        assignments=assignments,
+                    evaluation_result = await evaluate_predictions(
+                        predictions_path=response,
+                        assignment=task,
                     )
                     logger.info(
                         "Evaluation complete for task_type='%s'. Final score: %.2f/10",
                         task_type.value,
-                        evaluation_summary["final_score_0_to_10"],
+                        evaluation_result.primary_eval,
                     )
 
                 except Exception as e:
@@ -152,15 +152,17 @@ class TSTaskAgent(GreenAgent):
                         TaskState.failed,
                         new_agent_text_message(msg, context_id=updater.context_id),
                     )
-                    # TODO: Return null evaluation summary
+                    evaluation_result = failed_result(response, task)
+
+                results.append(evaluation_result)
 
                 # Return final evaluation results
                 await updater.update_status(
                     TaskState.working,
                     new_agent_text_message(
-                        f"Evaluation complete for task_type='{task_type.value}'. "
-                        f"Final Score: {evaluation_summary['final_score_0_to_10']:.2f}/10\n\n"
-                        f"Evaluation Summary:\n{json.dumps(evaluation_summary, indent=2)}",
+                        f"Evaluation complete for task {i}: {task.name} "
+                        f"Score: {evaluation_result.primary_eval:.2f}/10\n\n"
+                        f"Evaluation Summary:\n{evaluation_result.model_dump_json()}",
                         context_id=updater.context_id,
                     ),
                 )
@@ -168,14 +170,19 @@ class TSTaskAgent(GreenAgent):
             except Exception as e:
                 msg = f"Failed to communicate with participant agent or parse response: {e}"
                 logger.error(msg)
-                await updater.update_status(
-                    TaskState.failed,
+                await updater.failed(
                     new_agent_text_message(msg, context_id=updater.context_id),
                 )
-                # TODO: If no response then end task?
+                return
 
-        # TODO: Join scores
-        # TODO: Submit final scores
+        summary = aggregate_scores(task_type, results)
+
+        await updater.add_artifact(
+            parts=[Part(root=TextPart(text=summary.model_dump_json()))],
+            name="Result",
+        )
+        await updater.complete()
+        self._tool_provider.reset()
 
     def validate_request(self, request: EvalRequest) -> tuple[bool, str]:
         """
