@@ -1,0 +1,71 @@
+Task: Multivariate Forecasting of Major FX Log-Return Dynamics
+
+**1. Task Overview**
+
+This task evaluates a model’s ability to forecast 5-day multivariate log-return sequences for seven major foreign-exchange pairs, using the preceding 40 days of market behaviour as input.
+The objective is to capture medium-horizon FX dynamics shaped by monetary-policy shifts, macroeconomic announcements, and cross-currency interactions.
+
+Task Type: Forecasting
+Input Shape: [40, 7] log-return sequences
+Target Shape: [5, 7] log-return sequences
+
+**2. Task Description**
+
+Participants must develop a supervised forecasting model that takes as input 40 days of log-returns across the following currency pairs:
+EUR_USD, GBP_USD, USD_JPY, USD_CNY, AUD_USD, USD_CHF, USD_CAD.
+
+The model must then produce a forecast for the next 5 days of log-returns for the same seven FX pairs.
+Each data sample therefore contains:
+- an input matrix of shape [40, 7],
+- a target matrix of shape [5, 7].
+
+The forecasting challenge requires learning medium-horizon temporal relationships such as:
+- interest-rate–driven adjustments across currency pairs,
+- policy divergence patterns between central banks,
+- cross-currency risk transmission,
+- regime shifts in global risk sentiment.
+
+Any forecasting model is permitted, including transformer models, recurrent architectures, sequence-to-sequence networks, temporal convolutional models, or regression-based baselines, provided that produced outputs match the required [5, 7] structure.
+
+**3. Dataset**
+
+The dataset is constructed from daily foreign-exchange rates converted into log-returns to normalize scale and focus on incremental exchange-rate movements.
+Each supervised sample pairs a 40-day input window with a 5-day prediction horizon, capturing nearly two months of FX dynamics prior to forecasting the next week.
+
+The dataset includes:
+- Train set
+- Validation set
+- Test set
+
+Participants should develop and tune models using the train and validation splits.
+The test set will not be provided; final ranking is based solely on performance on the held-out test set using the primary metric (RMSE).
+
+**4. Evaluation**
+
+Forecast accuracy is assessed using three metrics well suited to multivariate FX prediction:
+
+- RMSE
+  Root mean squared error evaluating magnitude accuracy of predicted log-returns.
+
+- MAE
+  Mean absolute error providing a stable measure of forecast accuracy less sensitive to outliers.
+
+- MAPE
+  Mean absolute percentage error offering a scale-normalised accuracy measure across currencies with differing volatility structures.
+
+RMSE is the primary ranking metric.
+MAE and MAPE supply additional insight into robustness and scale-adjusted forecast alignment.
+Evaluation metric code for RMSE, MAE, and MAPE will be provided to participants.
+
+**5. Success Criteria**
+
+A strong submission should:
+- Achieve low RMSE，MAE, and MAPE over the 5-day prediction horizon.
+- Produce stable, well-calibrated forecasts without drift or excessive noise.
+- Capture medium-horizon cross-currency interactions, volatility patterns, and regime behaviour reflected in the input sequences.
+
+**6. Difficulty Level**
+
+Difficulty: Intermediate
+
+Models must learn a rich combination of macroeconomic drivers, cross-currency dependencies, and medium-horizon temporal structure to generate accurate forecasts across major FX pairs.
