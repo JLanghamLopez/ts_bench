@@ -2,6 +2,7 @@ import json
 import logging
 
 from litellm import acompletion
+from pydantic import BaseModel
 
 from data.task_bank import TaskDefinition, TaskDifficulty, TaskType
 
@@ -31,11 +32,49 @@ METRIC_NORMALIZATION = {
 }
 
 
+class TaskResult(BaseModel):
+    task_id: str
+    name: str
+    description: str
+    difficulty: TaskDifficulty
+    raw_metrics: dict[str, float]
+    primary_eval: float
+    prediction_path: str
+
+
+class EvalSummary(BaseModel):
+    task_type: TaskType
+    primary_metric: str
+    num_tasks: int
+    per_task: list[TaskResult]
+    overall_weighted_score_0_to_1: float
+    final_score_0_to_10: float
+    feedback: str
+
+
+def failed_result(predictions_path: str, task: TaskDefinition) -> TaskResult:
+    # TODO: Check null results make sense for metrics
+    if task.task_type is TaskType.TIME_SERIES_FORECASTING:
+        null_metrics = {"rmse": 1000000.0, "mae": 1000000.0, "mape": 10000000.0}
+        primary_eval = null_metrics["rmse"]
+    else:
+        null_metrics = {"histloss": 10000000.0, "auto_corr": 0.0, "cross_corr": 0.0}
+        primary_eval = null_metrics["histloss"]
+
+    return TaskResult(
+        task_id=task.task_id,
+        name=task.name,
+        description=task.description,
+        difficulty=task.difficulty,
+        raw_metrics=null_metrics,
+        primary_eval=primary_eval,
+        prediction_path=predictions_path,
+    )
+
+
 async def evaluate_predictions(
-    task_type: TaskType,
-    predictions: dict[str, str],
-    assignments: list[TaskDefinition],
-) -> dict:
+    predictions_path: str, assignment: TaskDefinition
+) -> TaskResult:
     """
     Run the correct_fn evaluation for the given task_type.
     This is a placeholder that will call the appropriate evaluation function.
@@ -44,90 +83,37 @@ async def evaluate_predictions(
     - Call task-specific eval_fn (TODO) to compute raw_metrics
     - Compute primary metric normalized score and difficulty-weighted score
     """
+    task_type = assignment.task_type
+    logger.info("Running evaluation for task_type='%s'.", assignment.task_type.value)
+    # primary_metric = PRIMARY_METRIC[task_type]
 
     logger.info(
-        "Running evaluation for task_type='%s' with %d tasks.",
-        task_type.value,
-        len(assignments),
+        "Evaluating task_id='%s', difficulty='%s', prediction_path='%s'",
+        assignment.task_id,
+        assignment.difficulty.value,
+        predictions_path or "<missing>",
     )
 
-    primary_metric = PRIMARY_METRIC[task_type]
+    # TODO: call correct eval_fn.py
+    # Placeholder
+    if task_type is TaskType.TIME_SERIES_FORECASTING:
+        raw_metrics = {"rmse": 0.5, "mae": 0.4, "mape": 0.3}
+        primary_eval = raw_metrics["rmse"]
+    else:
+        raw_metrics = {"histloss": 0.6, "auto_corr": 0.5, "cross_corr": 0.4}
+        primary_eval = raw_metrics["histloss"]
 
-    per_task_evals: dict[str, dict] = {}
-
-    for task in assignments:
-        pred_path = predictions.get(task.task_id)
-        logger.info(
-            "Evaluating task_id='%s', difficulty='%s', prediction_path='%s'",
-            task.task_id,
-            task.difficulty.value,
-            pred_path or "<missing>",
-        )
-
-        if not pred_path:
-            # raw_metrics = {m: float("inf") for m in metric_names}
-            if task_type is TaskType.TIME_SERIES_FORECASTING:
-                raw_metrics = {"rmse": 0.5, "mae": 0.4, "mape": 0.3}
-            else:
-                raw_metrics = {"histloss": 0.6, "auto_corr": 0.5, "cross_corr": 0.4}
-        else:
-            # TODO: call correct eval_fn.py
-            # raw_metrics = await self._run_single_task_eval(task, pred_path, metric_names)
-            # Placeholder
-            if task_type is TaskType.TIME_SERIES_FORECASTING:
-                raw_metrics = {"rmse": 0.5, "mae": 0.4, "mape": 0.3}
-            else:
-                raw_metrics = {"histloss": 0.6, "auto_corr": 0.5, "cross_corr": 0.4}
-
-        primary_eval = _compute_primary_metric_score(
-            task_type=task_type,
-            difficulty=task.difficulty,
-            metrics=raw_metrics,
-        )
-
-        per_task_evals[task.task_id] = {
-            "task_id": task.task_id,
-            "name": task.name,
-            "description": task.description,
-            "difficulty": task.difficulty.value,
-            "raw_metrics": raw_metrics,
-            "primary_eval": primary_eval,
-            "prediction_path": pred_path,
-        }
-
-    # Aggregate scores
-    weighted_scores = [
-        v["primary_eval"]["weighted_score"] for v in per_task_evals.values()
-    ]
-    weights_sum = sum(
-        v["primary_eval"]["difficulty_weight"] for v in per_task_evals.values()
+    result = TaskResult(
+        task_id=assignment.task_id,
+        name=assignment.name,
+        description=assignment.description,
+        difficulty=assignment.difficulty,
+        raw_metrics=raw_metrics,
+        primary_eval=primary_eval,
+        prediction_path=predictions_path,
     )
 
-    overall_weighted_score = (
-        sum(weighted_scores) / weights_sum if weights_sum > 0 else 0.0
-    )
-    final_score = max(0.0, min(10.0, 10.0 * overall_weighted_score))
-
-    evaluation_summary = {
-        "task_type": task_type.value,
-        "primary_metric": primary_metric,
-        "num_tasks": len(assignments),
-        "per_task": per_task_evals,
-        "overall_weighted_score_0_to_1": overall_weighted_score,
-        "final_score_0_to_10": final_score,
-        # for LLM feedback prompt
-        "metric_normalization_params": METRIC_NORMALIZATION,
-        "difficulty_weights": {d.value: w for d, w in DIFFICULTY_WEIGHTS.items()},
-    }
-
-    try:
-        feedback = await _generate_feedback(task_type, evaluation_summary)
-        if feedback:
-            evaluation_summary["feedback"] = feedback
-    except Exception as e:
-        logger.warning("LLM feedback generation failed: %s", e)
-
-    return evaluation_summary
+    return result
 
 
 def _normalize_metric(
@@ -178,6 +164,52 @@ def _compute_primary_metric_score(
         "difficulty_weight": weight,
         "weighted_score": weighted,
     }
+
+
+async def aggregate_scores(
+    task_type: TaskType, results: list[TaskResult]
+) -> EvalSummary:
+    # Aggregate scores
+    weighted_scores = [v.primary_eval["weighted_score"] for v in results]
+    weights_sum = sum([v.primary_eval["difficulty_weight"] for v in results])
+
+    overall_weighted_score = (
+        sum(weighted_scores) / weights_sum if weights_sum > 0 else 0.0
+    )
+    final_score = max(0.0, min(10.0, 10.0 * overall_weighted_score))
+
+    if USE_LLM_FEEDBACK:
+        evaluation_summary = {
+            "task_type": task_type.value,
+            "primary_metric": PRIMARY_METRIC[task_type],
+            "num_tasks": len(results),
+            "per_task": results,
+            "overall_weighted_score_0_to_1": overall_weighted_score,
+            "final_score_0_to_10": final_score,
+            # for LLM feedback prompt
+            "metric_normalization_params": METRIC_NORMALIZATION,
+            "difficulty_weights": {d.value: w for d, w in DIFFICULTY_WEIGHTS.items()},
+        }
+
+        try:
+            feedback = await _generate_feedback(task_type, evaluation_summary)
+
+        except Exception as e:
+            logger.warning("LLM feedback generation failed: %s", e)
+            raise e
+
+    else:
+        feedback = "No feedback provided"
+
+    return EvalSummary(
+        task_type=task_type.value,
+        primary_metric=PRIMARY_METRIC[task_type],
+        num_tasks=len(results),
+        per_task=results,
+        overall_weighted_score_0_to_1=overall_weighted_score,
+        final_score_0_to_10=final_score,
+        feedback=feedback,
+    )
 
 
 async def _generate_feedback(task_type: TaskType, summary: dict) -> str | None:
