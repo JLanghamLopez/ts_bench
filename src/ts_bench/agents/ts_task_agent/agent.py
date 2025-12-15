@@ -125,7 +125,6 @@ class TSTaskAgent(GreenAgent):
                 logger.info("Received response from participant agent: %s", response)
 
                 check_response(response)
-
                 await updater.update_status(
                     TaskState.working,
                     new_agent_text_message(
@@ -133,7 +132,6 @@ class TSTaskAgent(GreenAgent):
                         context_id=updater.context_id,
                     ),
                 )
-
                 try:
                     evaluation_result = await evaluate_predictions(
                         predictions_path=response,

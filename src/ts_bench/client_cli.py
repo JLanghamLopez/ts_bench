@@ -2,9 +2,9 @@ import asyncio
 import json
 import logging
 import sys
-import tomli as tomllib
 from pathlib import Path
 
+import tomli as tomllib
 from a2a.types import (
     AgentCard,
     DataPart,

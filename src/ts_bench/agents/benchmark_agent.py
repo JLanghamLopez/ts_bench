@@ -272,32 +272,33 @@ class BaselineExecutorExecutor(AgentExecutor):
         # STEP 2 — For each task, generate solver code via OpenAI
         # --------------------------------------------------
         prediction_paths = {}
-        task_id = t["task_id"]
-        data_url = t["data_url"]
-        parsed_data = download_and_parse_kaggle_timeseries_dataset(data_url)
-        task_description = parsed_data["task_description"]
-        data_root_dir = parsed_data["root_dir"]
-        target_shape = parsed_data["target_shape"]
-        await updater.update_status(
-            TaskState.working,
-            new_agent_text_message(
-                f"Generating solver for task '{task_id}'...",
-                context_id=context.context_id,
-            ),
-        )
+        for t in task_defs:
+            task_id = t["task_id"]
+            data_url = t["data_url"]
+            parsed_data = download_and_parse_kaggle_timeseries_dataset(data_url)
+            task_description = parsed_data["task_description"]
+            data_root_dir = parsed_data["root_dir"]
+            target_shape = parsed_data["target_shape"]
+            await updater.update_status(
+                TaskState.working,
+                new_agent_text_message(
+                    f"Generating solver for task '{task_id}'...",
+                    context_id=context.context_id,
+                ),
+            )
 
-        solver_code = await generate_solver_code(task_id, task_description, data_root_dir, template_python)
-        ensure_dependencies(solver_code)
-        try:
-            await run_generated_code(solver_code, task_id)
-        except Exception as e:
-            logger.error(f"Error running solver for task {task_id}: {e}")
-            logger.warning("Using dummy predictions instead.")
-            # create dummy predictions
-            dummy_preds = np.zeros(target_shape)
-            df = pd.DataFrame({'prediction': dummy_preds.flatten()})
-            df.to_csv(f"/tmp/{task_id}.csv", index=False)
-        prediction_paths[task_id] = f"/tmp/{task_id}.csv"
+            solver_code = await generate_solver_code(task_id, task_description, data_root_dir, template_python)
+            ensure_dependencies(solver_code)
+            try:
+                await run_generated_code(solver_code, task_id)
+            except Exception as e:
+                logger.error(f"Error running solver for task {task_id}: {e}")
+                logger.warning("Using dummy predictions instead.")
+                # create dummy predictions
+                dummy_preds = np.zeros(target_shape)
+                df = pd.DataFrame({'prediction': dummy_preds.flatten()})
+                df.to_csv(f"/tmp/{task_id}.csv", index=False)
+            prediction_paths = f"/tmp/{task_id}.csv"
 
         # --------------------------------------------------
         # STEP 3 — Return JSON mapping
