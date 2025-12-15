@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import sys
-import tomllib
+import tomli as tomllib
 from pathlib import Path
 
 from a2a.types import (

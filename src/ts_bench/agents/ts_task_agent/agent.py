@@ -231,7 +231,7 @@ async def main():
     file_dir = Path(__file__).resolve().parent
     proj_dir = file_dir.parents[2]
 
-    tasks_json_path = (proj_dir / "data/tasks.json").resolve()
+    tasks_json_path = (proj_dir / "../data/tasks.json").resolve()
 
     async with agent_url_cm as agent_url:
         task_bank = TaskBank(

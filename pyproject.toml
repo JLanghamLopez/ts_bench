@@ -5,12 +5,18 @@ description = ""
 authors = []
 readme = "README.md"
 packages = [{include = "ts_bench", from = "src"}]
-requires-python = ">=3.10,<4.0"
+requires-python = ">=3.10,<3.14"
 dependencies = [
     "a2a-sdk[http-server] (>=0.3.19,<0.4.0)",
     "uvicorn (>=0.38.0,<0.39.0)",
     "dotenv (>=0.9.9,<0.10.0)",
-    "litellm (>=1.80.9,<2.0.0)"
+    "litellm (>=1.80.8,<2.0.0)",
+    "boto3 (>=1.42.4,<2.0.0)",
+    "tomli (>=2.3.0,<3.0.0)",
+    "dspy (>=3.0.4,<4.0.0)",
+    "google-adk[a2a] (>=1.20.0,<2.0.0)",
+    "pandas (>=2.3.3,<3.0.0)",
+    "torch (>=2.9.1,<3.0.0)"
 ]
 
 [tool.poetry]
