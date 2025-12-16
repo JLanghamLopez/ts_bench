@@ -168,18 +168,15 @@ class TSTaskAgent(GreenAgent):
             except Exception as e:
                 msg = f"Failed to communicate with participant agent or parse response: {e}"
                 logger.error(msg)
-                await updater.failed(
-                    new_agent_text_message(msg, context_id=updater.context_id),
-                )
-                return
+                # TODO: Should we write a better exception here?
+                raise e
 
-        summary = aggregate_scores(task_type, results)
+        summary = await aggregate_scores(task_type, results)
 
         await updater.add_artifact(
             parts=[Part(root=TextPart(text=summary.model_dump_json()))],
             name="Result",
         )
-        await updater.complete()
         self._tool_provider.reset()
 
     def validate_request(self, request: EvalRequest) -> tuple[bool, str]:

@@ -170,8 +170,9 @@ async def aggregate_scores(
     task_type: TaskType, results: list[TaskResult]
 ) -> EvalSummary:
     # Aggregate scores
-    weighted_scores = [v.primary_eval["weighted_score"] for v in results]
-    weights_sum = sum([v.primary_eval["difficulty_weight"] for v in results])
+    # TODO: Use correct values here
+    weighted_scores = [v.primary_eval for v in results]
+    weights_sum = sum([1.0 for _ in results])
 
     overall_weighted_score = (
         sum(weighted_scores) / weights_sum if weights_sum > 0 else 0.0
