@@ -20,7 +20,7 @@ Any generative architecture may be used (for example, diffusion models, GANs, no
 
 **3. Dataset**
 
-The dataset consists of log-return time series constructed from daily settlement prices for the nine commodities.
+The dataset consists of log-return time series constructed from daily settlement prices for the nine commodities spanning the period 2007-07-30 to 2025-11-28.
 The series have been segmented into overlapping windows using a 60-day window and a stride of 5 days, resulting in [60, 9] log-return trajectories that capture medium-term dynamics.
 
 Predefined splits are provided:
@@ -29,7 +29,7 @@ Predefined splits are provided:
 - Test set
 
 Participants should use the train and validation sets for model training and tuning.
-The test set will not be provided; final ranking is based solely on performance on the held-out test set using the primary metric (HistogramMetric).
+Final ranking is based solely on performance on the held-out test set using the primary metric (HistogramMetric).
 
 **4. Evaluation**
 
