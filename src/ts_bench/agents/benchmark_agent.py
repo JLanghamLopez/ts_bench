@@ -3,7 +3,16 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
+import re
+import subprocess
+import tempfile
+import zipfile
+from typing import Dict, List
 
+import numpy as np
+import pandas as pd
+import requests
 import uvicorn
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
@@ -18,52 +27,13 @@ from a2a.types import (
 )
 from a2a.utils import new_agent_text_message, new_task
 from a2a.utils.errors import ServerError
-from typing import Dict, List
-import subprocess
 from openai import OpenAI
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-import re
-import sys
-import os
-import requests
-import zipfile
-import pandas as pd
-import tempfile
-import numpy as np
 
 client = OpenAI()
 
-# -----------------------------------------------------------
-# Utility: Ensure dependencies are installed
-# -----------------------------------------------------------
-PACKAGE_MAP = {
-    "sklearn": "scikit-learn",
-    "cv2": "opencv-python",
-    "PIL": "Pillow",
-    "yaml": "pyyaml",
-}
-
-def map_module_to_package(module: str):
-    return PACKAGE_MAP.get(module, module)
-
-
-def ensure_dependencies(code: str):
-    from_imports = re.findall(r'^\s*from\s+([a-zA-Z_][\w\.]*)\s+import\s+', code, re.MULTILINE)
-    import_imports = re.findall(r'^\s*import\s+([a-zA-Z_][\w\.]*)', code, re.MULTILINE)
-
-    modules = set(from_imports + import_imports)
-
-    for module in modules:
-        # Only install top-level package
-        top_level = module.split('.')[0]
-
-        try:
-            __import__(top_level)
-        except ImportError:
-            pkg = map_module_to_package(top_level)
-            print(f"📦 Installing missing package '{pkg}' for import '{module}'")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
 
 # -----------------------------------------------------------
 # Utility: Extract tasks from assignment message
@@ -116,10 +86,7 @@ def download_and_parse_kaggle_timeseries_dataset(dataset_url: str) -> dict:
 
     print(f"Downloading dataset from Kaggle with url: {dataset_url} to: {zip_path}")
 
-    response = requests.get(
-        dataset_url,
-        stream=True
-    )
+    response = requests.get(dataset_url, stream=True)
 
     if response.status_code != 200:
         raise RuntimeError(f"Failed to download Kaggle dataset: {response.text}")
@@ -139,7 +106,7 @@ def download_and_parse_kaggle_timeseries_dataset(dataset_url: str) -> dict:
         task_description = f.read()
 
     # get the target shape from the task description
-    match = re.search(r'\[ *(\d+) *, *(\d+) *\]', task_description)
+    match = re.search(r"\[ *(\d+) *, *(\d+) *\]", task_description)
     if match:
         t, c = map(int, match.groups())
 
@@ -148,6 +115,7 @@ def download_and_parse_kaggle_timeseries_dataset(dataset_url: str) -> dict:
         raise FileNotFoundError("eval_fn.py not found in dataset.")
 
     data_dir = os.path.join(tmp_dir, "dataset")
+
     def load_pkl(name):
         path = os.path.join(data_dir, name)
         if not os.path.exists(path):
@@ -155,7 +123,6 @@ def download_and_parse_kaggle_timeseries_dataset(dataset_url: str) -> dict:
         return pd.read_pickle(path)
 
     bs = load_pkl("test_X.pkl").shape[0]
-
 
     return {
         "root_dir": tmp_dir,
@@ -165,11 +132,12 @@ def download_and_parse_kaggle_timeseries_dataset(dataset_url: str) -> dict:
     }
 
 
-
 # -----------------------------------------------------------
 # Utility: Call OpenAI to generate Python code
 # -----------------------------------------------------------
-async def generate_solver_code(task_id: str, task_description: str, data_root_dir: str, template_python: str) -> str:
+async def generate_solver_code(
+    task_id: str, task_description: str, data_root_dir: str, template_python: str
+) -> str:
     """
     Ask OpenAI to write Python code that:
     - downloads the dataset
@@ -191,6 +159,12 @@ Write Python code that:
 4. Saves a CSV file containing predictions in this exact path:
    /tmp/{task_id}.csv
 5. The CSV must contain only one column: 'prediction'
+
+ONLY the following libraries are available for import:
+
+- sklearn
+- pandas
+- numpy
 
 Output ONLY runnable Python code, nothing else.
 """
@@ -287,8 +261,10 @@ class BaselineExecutorExecutor(AgentExecutor):
                 ),
             )
 
-            solver_code = await generate_solver_code(task_id, task_description, data_root_dir, template_python)
-            ensure_dependencies(solver_code)
+            solver_code = await generate_solver_code(
+                task_id, task_description, data_root_dir, template_python
+            )
+
             try:
                 await run_generated_code(solver_code, task_id)
             except Exception as e:
@@ -296,7 +272,7 @@ class BaselineExecutorExecutor(AgentExecutor):
                 logger.warning("Using dummy predictions instead.")
                 # create dummy predictions
                 dummy_preds = np.zeros(target_shape)
-                df = pd.DataFrame({'prediction': dummy_preds.flatten()})
+                df = pd.DataFrame({"prediction": dummy_preds.flatten()})
                 df.to_csv(f"/tmp/{task_id}.csv", index=False)
             prediction_paths = f"/tmp/{task_id}.csv"
 
@@ -324,9 +300,7 @@ class BaselineExecutorExecutor(AgentExecutor):
 
 
 async def main():
-    parser = argparse.ArgumentParser(
-        description="Run benchmark participant agent."
-    )
+    parser = argparse.ArgumentParser(description="Run benchmark participant agent.")
     parser.add_argument(
         "--host", type=str, default="127.0.0.1", help="Host to bind the server"
     )
