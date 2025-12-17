@@ -10,7 +10,7 @@ import uvicorn
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
-from a2a.types import Part, TaskState, TextPart
+from a2a.types import Part, TextPart
 from a2a.utils import new_agent_text_message
 
 from data.task_bank import TaskBank, TaskDefinition, TaskType
@@ -77,8 +77,7 @@ class TSTaskAgent(GreenAgent):
         task_type = TaskType(task_type_str)
 
         # Fetch tasks and prepare assignment
-        await updater.update_status(
-            TaskState.working,
+        await updater.start_work(
             new_agent_text_message(
                 f"Preparing task assignment for type='{task_type.value}'.",
                 context_id=updater.context_id,
@@ -99,8 +98,7 @@ class TSTaskAgent(GreenAgent):
                 f"Sending instructions to participant agent."
             )
 
-            await updater.update_status(
-                TaskState.working,
+            await updater.start_work(
                 new_agent_text_message(
                     (
                         f"Sending task {i}: {task.name} to "
@@ -125,8 +123,7 @@ class TSTaskAgent(GreenAgent):
                 logger.info("Received response from participant agent: %s", response)
 
                 check_response(response)
-                await updater.update_status(
-                    TaskState.working,
+                await updater.start_work(
                     new_agent_text_message(
                         "Received prediction path from participant. Starting evaluation.",
                         context_id=updater.context_id,
@@ -146,8 +143,7 @@ class TSTaskAgent(GreenAgent):
                 except Exception as e:
                     msg = f"Evaluation failed for task number {i}': {e}"
                     logger.error(msg, exc_info=True)
-                    await updater.update_status(
-                        TaskState.working,
+                    await updater.start_work(
                         new_agent_text_message(msg, context_id=updater.context_id),
                     )
                     evaluation_result = failed_result(response, task)
@@ -155,8 +151,7 @@ class TSTaskAgent(GreenAgent):
                 results.append(evaluation_result)
 
                 # Return final evaluation results
-                await updater.update_status(
-                    TaskState.working,
+                await updater.start_work(
                     new_agent_text_message(
                         f"Evaluation complete for task {i}: {task.name} "
                         f"Score: {evaluation_result.primary_eval:.2f}/10\n\n"
@@ -168,18 +163,15 @@ class TSTaskAgent(GreenAgent):
             except Exception as e:
                 msg = f"Failed to communicate with participant agent or parse response: {e}"
                 logger.error(msg)
-                await updater.failed(
-                    new_agent_text_message(msg, context_id=updater.context_id),
-                )
-                return
+                # TODO: Should we write a better exception here?
+                raise e
 
-        summary = aggregate_scores(task_type, results)
+        summary = await aggregate_scores(task_type, results)
 
         await updater.add_artifact(
             parts=[Part(root=TextPart(text=summary.model_dump_json()))],
             name="Result",
         )
-        await updater.complete()
         self._tool_provider.reset()
 
     def validate_request(self, request: EvalRequest) -> tuple[bool, str]:
