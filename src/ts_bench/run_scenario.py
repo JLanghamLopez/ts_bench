@@ -7,10 +7,10 @@ import signal
 import subprocess
 import sys
 import time
-import tomllib
 from pathlib import Path
 
 import httpx
+import tomli as tomllib
 from a2a.client import A2ACardResolver
 from dotenv import load_dotenv
 
