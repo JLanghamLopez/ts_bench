@@ -3,13 +3,13 @@ import asyncio
 import logging
 import os
 import shlex
-import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 import httpx
+import psutil
 import tomli as tomllib
 from a2a.client import A2ACardResolver
 from dotenv import load_dotenv
@@ -18,6 +18,38 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 load_dotenv(override=True)
+
+
+def kill_process_tree(proc: subprocess.Popen, timeout: float = 5) -> None:
+    """Kill a process and all its children cross-platform using psutil."""
+    if proc.poll() is not None:
+        return
+
+    try:
+        parent = psutil.Process(proc.pid)
+        children = parent.children(recursive=True)
+
+        # Terminate children first, then parent
+        for child in children:
+            try:
+                child.terminate()
+            except psutil.NoSuchProcess:
+                pass
+
+        parent.terminate()
+
+        # Wait for graceful termination
+        gone, alive = psutil.wait_procs([parent] + children, timeout=timeout)
+
+        # Force kill any remaining processes
+        for p in alive:
+            try:
+                p.kill()
+            except psutil.NoSuchProcess:
+                pass
+
+    except psutil.NoSuchProcess:
+        pass
 
 
 async def wait_for_agents(cfg: dict, timeout: int = 30) -> bool:
@@ -145,7 +177,6 @@ def main():
                     stdout=sink,
                     stderr=sink,
                     text=True,
-                    start_new_session=True,
                 )
             )
 
@@ -165,7 +196,6 @@ def main():
                     stdout=sink,
                     stderr=sink,
                     text=True,
-                    start_new_session=True,
                 )
             )
 
@@ -187,7 +217,6 @@ def main():
             client_proc = subprocess.Popen(
                 [sys.executable, "-m", "ts_bench.client_cli", args.scenario],
                 env=base_env,
-                start_new_session=True,
             )
             procs.append(client_proc)
             client_proc.wait()
@@ -198,18 +227,7 @@ def main():
     finally:
         print("\nShutting down...")
         for p in procs:
-            if p.poll() is None:
-                try:
-                    os.killpg(p.pid, signal.SIGTERM)
-                except ProcessLookupError:
-                    pass
-        time.sleep(1)
-        for p in procs:
-            if p.poll() is None:
-                try:
-                    os.killpg(p.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+            kill_process_tree(p)
 
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@ the assigned tasks.
 Dependencies can be installed with [poetry](https://python-poetry.org/) by running
 
 ```commandline
-poetry install
+poetry install --with benchmark
 ```
 
 which will create a virtual environment in the repo at `.venv` which can
@@ -54,6 +54,12 @@ be activated with
 
 ```commandline
 source .venv/bin/activate
+```
+
+On Windows (PowerShell):
+
+```powershell
+.venv\Scripts\Activate.ps1
 ```
 
 ## Running
