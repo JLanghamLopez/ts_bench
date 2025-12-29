@@ -84,12 +84,15 @@ def download_and_parse_kaggle_timeseries_dataset(dataset_url: str) -> dict:
     tmp_dir = tempfile.mkdtemp(prefix="tsbench_")
     zip_path = os.path.join(tmp_dir, "dataset.zip")
 
-    print(f"Downloading dataset from Kaggle with url: {dataset_url} to: {zip_path}")
+    print(f"Downloading dataset from: {dataset_url} to: {zip_path}")
 
-    response = requests.get(dataset_url, stream=True)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    response = requests.get(dataset_url, stream=True, headers=headers, timeout=60)
 
     if response.status_code != 200:
-        raise RuntimeError(f"Failed to download Kaggle dataset: {response.text}")
+        raise RuntimeError(f"Failed to download dataset (status {response.status_code}): {response.text}")
 
     with open(zip_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=8192):
@@ -157,7 +160,7 @@ Write Python code that:
 2. Trains a forecasting model (any reasonable baseline).
 3. Predicts the test set.
 4. Saves a CSV file containing predictions in this exact path:
-   /tmp/{task_id}.csv
+   {tempfile.gettempdir()}/{task_id}.csv
 5. The CSV must contain only one column: 'prediction'
 
 ONLY the following libraries are available for import:
@@ -191,7 +194,8 @@ Output ONLY runnable Python code, nothing else.
 # -----------------------------------------------------------
 async def run_generated_code(code: str, task_id: str):
     """Execute generated Python code in a temp file."""
-    tmp_file = f"/tmp/{task_id}_solver.py"
+    tmp_dir = tempfile.gettempdir()
+    tmp_file = os.path.join(tmp_dir, f"{task_id}_solver.py")
     with open(tmp_file, "w") as f:
         f.write(code)
 
@@ -203,7 +207,7 @@ async def run_generated_code(code: str, task_id: str):
         logger.error(f"Solver for {task_id} failed:\n{proc.stderr}")
         raise RuntimeError(proc.stderr)
 
-    logger.info(f"Solved task {task_id}. Predictions saved to /tmp/{task_id}.csv")
+    logger.info(f"Solved task {task_id}. Predictions saved to {tmp_dir}/{task_id}.csv")
 
 
 # -----------------------------------------------------------
@@ -265,6 +269,7 @@ class BaselineExecutorExecutor(AgentExecutor):
                 task_id, task_description, data_root_dir, template_python
             )
 
+            tmp_dir = tempfile.gettempdir()
             try:
                 await run_generated_code(solver_code, task_id)
             except Exception as e:
@@ -273,8 +278,8 @@ class BaselineExecutorExecutor(AgentExecutor):
                 # create dummy predictions
                 dummy_preds = np.zeros(target_shape)
                 df = pd.DataFrame({"prediction": dummy_preds.flatten()})
-                df.to_csv(f"/tmp/{task_id}.csv", index=False)
-            prediction_paths = f"/tmp/{task_id}.csv"
+                df.to_csv(os.path.join(tmp_dir, f"{task_id}.csv"), index=False)
+            prediction_paths = os.path.join(tmp_dir, f"{task_id}.csv")
 
         # --------------------------------------------------
         # STEP 3 — Return JSON mapping
