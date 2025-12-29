@@ -74,7 +74,7 @@ python -m ts_bench.run_scenario scenario.toml
 
 ### Code Checks
 
-- Linting/formatting can be using pre-commit
+- Linting/formatting can use pre-commit
   ```commandline
   pre-commit run --all-files
   ```
