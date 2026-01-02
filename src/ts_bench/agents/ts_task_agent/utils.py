@@ -5,7 +5,6 @@ from typing import Callable, Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import torch
 
 from data.task_bank import TaskType
 
@@ -25,18 +24,21 @@ def check_response(response: str) -> None:
         raise ValueError(f"Predictions must be saved as a .npy file, got: {response}")
 
 
-def _ensure_tensor(obj):
-    if isinstance(obj, torch.Tensor):
+def _ensure_ndarray(obj):
+    """
+    Ensure object is a numpy ndarray with float32 dtype.
+    """
+    if isinstance(obj, np.ndarray):
+        if obj.dtype != np.float32:
+            return obj.astype(np.float32)
         return obj
-    elif isinstance(obj, np.ndarray):
-        return torch.tensor(obj, dtype=torch.float32)
     elif isinstance(obj, pd.DataFrame):
-        return torch.tensor(obj.values, dtype=torch.float32)
+        return obj.values.astype(np.float32)
     else:
-        raise ValueError(f"Cannot convert object of type {type(obj)} to torch.Tensor")
+        raise ValueError(f"Cannot convert object of type {type(obj)} to numpy array")
 
 
-def load_predictions(path: Path) -> torch.Tensor:
+def load_predictions(path: Path) -> np.ndarray:
     # already checked, may be deleted
     if path.suffix.lower() != ".npy":
         raise ValueError(f"Prediction file must be .npy, got {path}")
@@ -46,22 +48,22 @@ def load_predictions(path: Path) -> torch.Tensor:
     if arr.dtype != np.float32:
         raise TypeError(f"Prediction array must be float32, got {arr.dtype}")
 
-    return torch.from_numpy(arr)
+    return arr
 
 
-def load_ground_truth(path: Path) -> torch.Tensor:
+def load_ground_truth(path: Path) -> np.ndarray:
     suffix = path.suffix.lower()
 
     if suffix == ".pkl":
         with open(path, "rb") as f:
             obj = pickle.load(f)
-        return _ensure_tensor(obj)
+        return _ensure_ndarray(obj)
 
     elif suffix == ".npy":
         arr = np.load(path)
         if arr.dtype != np.float32:
             arr = arr.astype(np.float32, copy=False)
-        return torch.from_numpy(arr)
+        return arr
 
     else:
         raise ValueError(f"Unsupported ground-truth file extension: {suffix}")
@@ -70,8 +72,8 @@ def load_ground_truth(path: Path) -> torch.Tensor:
 # Input validation
 def validate_inputs(
     task_type: TaskType,
-    pred: torch.Tensor,
-    gt: torch.Tensor,
+    pred: np.ndarray,
+    gt: np.ndarray,
 ) -> Tuple[bool, Optional[str]]:
     try:
         if pred is None:
@@ -80,30 +82,30 @@ def validate_inputs(
             raise ValueError("Ground truth tensor is None.")
 
         # rank check
-        if pred.dim() != gt.dim():
+        if pred.ndim != gt.ndim:
             raise ValueError(
-                f"Prediction rank {pred.dim()} != ground truth rank {gt.dim()}."
+                f"Prediction rank {pred.ndim} != ground truth rank {gt.ndim}."
             )
 
         # both must be 3D: [N, T or H, D]
-        if pred.dim() != 3:
+        if pred.ndim != 3:
             raise ValueError(
                 f"Tensors must be 3D [N, T_or_H, D], got pred.shape={pred.shape}."
             )
 
         # Dtype check
-        if pred.dtype != torch.float32:
+        if pred.dtype != np.float32:
             raise ValueError(f"Prediction dtype must be float32, got {pred.dtype}.")
-        if gt.dtype != torch.float32:
+        if gt.dtype != np.float32:
             raise ValueError(f"Ground truth dtype must be float32, got {gt.dtype}.")
 
         # NaN / Inf check
-        if torch.isnan(pred).any():
+        if np.isnan(pred).any():
             raise ValueError("Predictions contain NaN values.")
-        if torch.isinf(pred).any():
+        if np.isinf(pred).any():
             raise ValueError("Predictions contain Inf values.")
 
-        if torch.isnan(gt).any():
+        if np.isnan(gt).any():
             raise ValueError("Ground truth contains NaN values.")
 
         # Shape match per task type
@@ -126,8 +128,6 @@ def validate_inputs(
         else:
             raise ValueError(f"Unsupported task type {task_type}")
 
-        # Device check: Placeholder
-
         return True, None
 
     except Exception as e:
@@ -136,9 +136,9 @@ def validate_inputs(
 
 # Evaluation dispatcher with batch support
 def run_eval(
-    eval_fn: Callable[[torch.Tensor, torch.Tensor], Dict[str, float]],
-    pred_tensor: torch.Tensor,
-    gt_tensor: torch.Tensor,
+    eval_fn: Callable[[np.ndarray, np.ndarray], Dict[str, float]],
+    pred_tensor: np.ndarray,
+    gt_tensor: np.ndarray,
     batch_size: Optional[int] = None,
 ) -> Dict[str, float]:
     """

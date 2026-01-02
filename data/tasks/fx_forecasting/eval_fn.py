@@ -1,22 +1,22 @@
-import torch
+import numpy as np
 
 
-def rmse(y_pred: torch.Tensor, y_true: torch.Tensor) -> float:
+def rmse(y_pred: np.ndarray, y_true: np.ndarray) -> float:
     """
     y_pred, y_true: [N, horizon, D] or any broadcastable shape.
     """
-    return torch.sqrt(((y_pred - y_true) ** 2).mean()).item()
+    return float(np.sqrt(((y_pred - y_true) ** 2).mean()))
 
 
-def mae(y_pred: torch.Tensor, y_true: torch.Tensor) -> float:
-    return (y_pred - y_true).abs().mean().item()
+def mae(y_pred: np.ndarray, y_true: np.ndarray) -> float:
+    return float(np.abs(y_pred - y_true).mean())
 
 
-def mape(y_pred: torch.Tensor, y_true: torch.Tensor, eps: float = 1e-8) -> float:
-    return ((y_pred - y_true).abs() / (y_true.abs() + eps)).mean().item()
+def mape(y_pred: np.ndarray, y_true: np.ndarray, eps: float = 1e-8) -> float:
+    return float((np.abs(y_pred - y_true) / (np.abs(y_true) + eps)).mean())
 
 
-def evaluate_forecast(y_pred: torch.Tensor, y_true: torch.Tensor) -> dict[str, float]:
+def evaluate_forecast(y_pred: np.ndarray, y_true: np.ndarray) -> dict[str, float]:
     """
     Convenience wrapper that returns all metrics at once.
     """

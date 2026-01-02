@@ -3,7 +3,6 @@ import logging
 from typing import Callable, Dict, Optional, Tuple
 
 import numpy as np
-import torch
 from litellm import acompletion
 from pydantic import BaseModel
 
@@ -75,8 +74,8 @@ def failed_result(predictions_path: str, task: TaskDefinition) -> TaskResult:
 # Input validation
 def validate_inputs(
     task_type: TaskType,
-    pred: torch.Tensor,
-    gt: torch.Tensor,
+    pred: np.ndarray,
+    gt: np.ndarray,
 ) -> Tuple[bool, Optional[str]]:
     try:
         if pred is None:
@@ -85,30 +84,30 @@ def validate_inputs(
             raise ValueError("Ground truth tensor is None.")
 
         # rank check
-        if pred.dim() != gt.dim():
+        if pred.ndim != gt.ndim:
             raise ValueError(
-                f"Prediction rank {pred.dim()} != ground truth rank {gt.dim()}."
+                f"Prediction rank {pred.ndim} != ground truth rank {gt.ndim}."
             )
 
         # both must be 3D: [N, T or H, D]
-        if pred.dim() != 3:
+        if pred.ndim != 3:
             raise ValueError(
                 f"Tensors must be 3D [N, T_or_H, D], got pred.shape={pred.shape}."
             )
 
         # Dtype check
-        if pred.dtype != torch.float32:
+        if pred.dtype != np.float32:
             raise ValueError(f"Prediction dtype must be float32, got {pred.dtype}.")
-        if gt.dtype != torch.float32:
+        if gt.dtype != np.float32:
             raise ValueError(f"Ground truth dtype must be float32, got {gt.dtype}.")
 
         # NaN / Inf check
-        if torch.isnan(pred).any():
+        if np.isnan(pred).any():
             raise ValueError("Predictions contain NaN values.")
-        if torch.isinf(pred).any():
+        if np.isinf(pred).any():
             raise ValueError("Predictions contain Inf values.")
 
-        if torch.isnan(gt).any():
+        if np.isnan(gt).any():
             raise ValueError("Ground truth contains NaN values.")
 
         # Shape match per task type
@@ -131,10 +130,7 @@ def validate_inputs(
         else:
             raise ValueError(f"Unsupported task type {task_type}")
 
-        # Device check
-        if pred.device != gt.device:
-            # move prediction to gt device.
-            pred = pred.to(gt.device)
+        # Device check: Not needed for numpy (CPU only)
 
         return True, None
 
@@ -144,9 +140,9 @@ def validate_inputs(
 
 # evaluation dispatcher with batch support
 def run_eval_fn(
-    eval_fn: Callable[[torch.Tensor, torch.Tensor], Dict[str, float]],
-    pred_tensor: torch.Tensor,
-    gt_tensor: torch.Tensor,
+    eval_fn: Callable[[np.ndarray, np.ndarray], Dict[str, float]],
+    pred_tensor: np.ndarray,
+    gt_tensor: np.ndarray,
     batch_size: Optional[int] = None,
 ) -> Dict[str, float]:
     """

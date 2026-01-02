@@ -1,81 +1,79 @@
 import logging
 from typing import Dict, List, Optional, Tuple
 
-import torch
-from torch import nn
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
 
-def acf_torch(
-    x: torch.Tensor, max_lag: int, dim: Tuple[int, ...] = (0, 1)
-) -> torch.Tensor:
+def acf_numpy(
+    x: np.ndarray, max_lag: int, dim: Tuple[int, ...] = (0, 1)
+) -> np.ndarray:
     """
     Computes (possibly multivariate) autocorrelation function along time dimension.
 
     Args:
-        x: Tensor of shape [B, S, D].
+        x: Array of shape [B, S, D].
         max_lag: Number of lags to compute.
         dim: Dimensions over which to average (default: (0, 1) over batch and time).
 
     Returns:
-        Tensor of shape [max_lag, D] if dim == (0, 1),
+        Array of shape [max_lag, D] if dim == (0, 1),
         or concatenated along last dimension otherwise.
     """
-    acf_list: List[torch.Tensor] = []
+    acf_list: List[np.ndarray] = []
 
     # Center
-    x = x - x.mean(dim=(0, 1), keepdim=False)
-    var = torch.var(x, unbiased=False, dim=(0, 1))  # [D]
+    x = x - x.mean(axis=(0, 1), keepdims=False)
+    var = np.var(x, ddof=0, axis=(0, 1))  # [D]
 
     for i in range(max_lag):
         if i > 0:
             # Correct slicing over all three dims
             y = x[:, i:, :] * x[:, :-i, :]
         else:
-            y = x.pow(2)
+            y = x ** 2
 
-        acf_i = torch.mean(y, dim=dim) / var
+        acf_i = np.mean(y, axis=dim) / var
         acf_list.append(acf_i)
 
     if dim == (0, 1):
-        return torch.stack(acf_list, dim=0)
+        return np.stack(acf_list, axis=0)
     else:
-        return torch.cat(acf_list, dim=1)
+        return np.concatenate(acf_list, axis=1)
 
 
-def non_stationary_acf_torch(
-    X: torch.Tensor,
+def non_stationary_acf_numpy(
+    X: np.ndarray,
     symmetric: bool = False,
-) -> torch.Tensor:
+) -> np.ndarray:
     """
     Compute correlation matrix between any two time points of the time series.
 
     Args:
-        X: Tensor [B, T, D].
+        X: Array [B, T, D].
         symmetric: If True, fill both upper and lower triangles (symmetric matrix).
                    If False, only upper triangle [t <= tau] is filled, lower remains zero.
 
     Returns:
-        Correlation tensor of shape [T, T, D] where entry (t_i, t_j, d)
+        Correlation array of shape [T, T, D] where entry (t_i, t_j, d)
         is the correlation between the d-th coordinate of X_{t_i} and X_{t_j}.
     """
     B, T, D = X.shape
-    device = X.device
-    correlations = torch.zeros(T, T, D, device=device)
+    correlations = np.zeros((T, T, D), dtype=X.dtype)
 
     eps = 1e-8
     for t in range(T):
         x_t = X[:, t, :]  # [B, D]
-        norm_t = torch.norm(x_t, dim=0)  # [D]
+        norm_t = np.linalg.norm(x_t, axis=0)  # [D]
         for tau in range(t, T):
             x_tau = X[:, tau, :]  # [B, D]
-            norm_tau = torch.norm(x_tau, dim=0)  # [D]
+            norm_tau = np.linalg.norm(x_tau, axis=0)  # [D]
 
             denom = norm_t * norm_tau
-            denom = denom.clamp_min(eps)
+            denom = np.maximum(denom, eps)
 
-            numerator = torch.sum(x_t * x_tau, dim=0)  # [D]
+            numerator = np.sum(x_t * x_tau, axis=0)  # [D]
             correlation = numerator / denom  # [D]
 
             correlations[t, tau, :] = correlation
@@ -85,48 +83,54 @@ def non_stationary_acf_torch(
     return correlations
 
 
-def cacf_torch(
-    x: torch.Tensor, lags: int, dim: Tuple[int, ...] = (0, 1)
-) -> torch.Tensor:
+def cacf_numpy(
+    x: np.ndarray, lags: int, dim: Tuple[int, ...] = (0, 1)
+) -> np.ndarray:
     """
     Computes the cross-correlation between feature dimension pairs over time.
 
     Args:
-        x: Tensor [B, T, D].
+        x: Array [B, T, D].
         lags: Number of lags to compute.
         dim: Unused for now but kept for interface symmetry.
 
     Returns:
-        Tensor of shape [B, N_pairs, lags],
+        Array of shape [B, N_pairs, lags],
         where N_pairs = number of lower-triangular (including diagonal) pairs of features.
     """
 
     def get_lower_triangular_indices(n: int):
-        return [list(idx) for idx in torch.tril_indices(n, n)]
+        indices = np.tril_indices(n, k=0)
+        return [list(indices[0]), list(indices[1])]
 
     # x: [B, T, D]
     pair_indices = get_lower_triangular_indices(x.shape[2])  # 2 x N_pairs
 
     # Normalize per (batch, time, feature)
-    x = (x - x.mean(dim=(0, 1), keepdim=True)) / x.std(dim=(0, 1), keepdim=True)
+    x_mean = x.mean(axis=(0, 1), keepdims=True)
+    x_std = x.std(axis=(0, 1), keepdims=True)
+    x_std = np.maximum(x_std, 1e-8)  # Avoid division by zero
+    x = (x - x_mean) / x_std
 
     x_l = x[..., pair_indices[0]]  # [B, T, N_pairs]
     x_r = x[..., pair_indices[1]]  # [B, T, N_pairs]
 
-    cacf_list: List[torch.Tensor] = []
+    cacf_list: List[np.ndarray] = []
     for i in range(lags):
         if i > 0:
             y = x_l[:, i:, :] * x_r[:, :-i, :]
         else:
             y = x_l * x_r
-        cacf_i = torch.mean(y, dim=1)  # [B, N_pairs]
+        cacf_i = np.mean(y, axis=1)  # [B, N_pairs]
         cacf_list.append(cacf_i)
 
-    cacf = torch.stack(cacf_list, dim=2)  # [B, N_pairs, lags]
+    cacf = np.stack(cacf_list, axis=2)  # [B, N_pairs, lags]
     return cacf
 
 
-class Loss(nn.Module):
+class Loss:
+    """Base class for loss computation."""
+
     def __init__(
         self,
         name: str,
@@ -136,42 +140,41 @@ class Loss(nn.Module):
         backward: bool = False,
         norm_foo=lambda x: x,
     ):
-        super().__init__()
         self.name = name
         self.reg = reg
         self.transform = transform
         self.threshold = threshold
         self.backward = backward
         self.norm_foo = norm_foo
-        self.loss_componentwise: Optional[torch.Tensor] = None
+        self.loss_componentwise: Optional[np.ndarray] = None
 
-    def forward(self, x_fake: torch.Tensor) -> torch.Tensor:
+    def __call__(self, x_fake: np.ndarray) -> float:
         self.loss_componentwise = self.compute(x_fake)
-        return self.reg * self.loss_componentwise.mean()
+        return float(self.reg * self.loss_componentwise.mean())
 
-    def compute(self, x_fake: torch.Tensor) -> torch.Tensor:
+    def compute(self, x_fake: np.ndarray) -> np.ndarray:
         raise NotImplementedError()
 
     @property
     def success(self) -> bool:
         if self.loss_componentwise is None:
             return False
-        return torch.all(self.loss_componentwise <= self.threshold)
+        return bool(np.all(self.loss_componentwise <= self.threshold))
 
 
-def acf_diff(x: torch.Tensor) -> torch.Tensor:
+def acf_diff(x: np.ndarray) -> np.ndarray:
     # x: e.g. [lags, D] or [T, T, D]; sum over first axis
-    return torch.sqrt(torch.pow(x, 2).sum(dim=0))
+    return np.sqrt((x ** 2).sum(axis=0))
 
 
-def cc_diff(x: torch.Tensor) -> torch.Tensor:
-    return torch.abs(x).sum(dim=0)
+def cc_diff(x: np.ndarray) -> np.ndarray:
+    return np.abs(x).sum(axis=0)
 
 
 class ACFLoss(Loss):
     def __init__(
         self,
-        x_real: torch.Tensor,
+        x_real: np.ndarray,
         max_lag: int = 64,
         stationary: bool = True,
         **kwargs,
@@ -181,60 +184,61 @@ class ACFLoss(Loss):
         self.stationary = stationary
 
         if stationary:
-            self.acf_real = acf_torch(
+            self.acf_real = acf_numpy(
                 self.transform(x_real),
                 self.max_lag,
                 dim=(0, 1),
             )  # [max_lag, D]
         else:
-            self.acf_real = non_stationary_acf_torch(
+            self.acf_real = non_stationary_acf_numpy(
                 self.transform(x_real),
                 symmetric=False,
             )  # [T, T, D]
 
-    def compute(self, x_fake: torch.Tensor) -> torch.Tensor:
+    def compute(self, x_fake: np.ndarray) -> np.ndarray:
         if self.stationary:
-            acf_fake = acf_torch(
+            acf_fake = acf_numpy(
                 self.transform(x_fake),
                 self.max_lag,
                 dim=(0, 1),
             )
         else:
-            acf_fake = non_stationary_acf_torch(
+            acf_fake = non_stationary_acf_numpy(
                 self.transform(x_fake),
                 symmetric=False,
-            ).to(x_fake.device)
+            )
 
-        diff = acf_fake - self.acf_real.to(x_fake.device)
+        diff = acf_fake - self.acf_real
         return self.norm_foo(diff)
 
 
-def _corrcoef_from_batch(x: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+def _corrcoef_from_batch(x: np.ndarray, eps: float = 1e-8) -> np.ndarray:
     """
     Compute feature-wise correlation matrix for x.
 
     Args:
-        x: Tensor [N, D], N samples, D features.
+        x: Array [N, D], N samples, D features.
 
     Returns:
         Corr matrix [D, D].
     """
-    if x.dim() != 2:
+    if x.ndim != 2:
         raise ValueError(f"Input to _corrcoef_from_batch must be 2D, got {x.shape}")
 
     N = x.shape[0]
     if N <= 1:
         # Degenerate case: return identity
-        return torch.eye(x.shape[1], device=x.device)
+        return np.eye(x.shape[1], dtype=x.dtype)
 
     # Center
-    x_centered = x - x.mean(dim=0, keepdim=True)
+    x_centered = x - x.mean(axis=0, keepdims=True)
 
     # Covariance
     cov = x_centered.T @ x_centered / (N - 1)  # [D, D]
 
     # Standard deviations
-    std = x_centered.std(dim=0, unbiased=True).clamp_min(eps)  # [D]
+    std = x_centered.std(axis=0, ddof=1)
+    std = np.maximum(std, eps)  # [D]
     denom = std[:, None] * std[None, :]  # [D, D]
 
     corr = cov / denom
@@ -242,11 +246,11 @@ def _corrcoef_from_batch(x: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 
 
 class cross_correlation(Loss):
-    def __init__(self, x_real: torch.Tensor, **kwargs):
+    def __init__(self, x_real: np.ndarray, **kwargs):
         super().__init__(**kwargs)
         self.x_real = x_real
 
-    def compute(self, x_fake: torch.Tensor) -> torch.Tensor:
+    def compute(self, x_fake: np.ndarray) -> np.ndarray:
         """
         Compute difference between real and fake feature-wise correlation matrices.
 
@@ -254,25 +258,25 @@ class cross_correlation(Loss):
         We first average over time to get [B, D], then compute corrcoef over batch.
         """
         # Mean over time: [B, D]
-        fake_mean = x_fake.mean(dim=1)
-        real_mean = self.x_real.mean(dim=1)
+        fake_mean = x_fake.mean(axis=1)
+        real_mean = self.x_real.mean(axis=1)
 
         fake_corr = _corrcoef_from_batch(fake_mean)
-        real_corr = _corrcoef_from_batch(real_mean.to(fake_corr.device))
+        real_corr = _corrcoef_from_batch(real_mean)
 
-        return torch.abs(fake_corr - real_corr)
+        return np.abs(fake_corr - real_corr)
 
 
-def histogram_torch_update(
-    x: torch.Tensor,
-    bins: torch.Tensor,
+def histogram_numpy_update(
+    x: np.ndarray,
+    bins: np.ndarray,
     density: bool = True,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Computes the histogram of a tensor using provided bins, ignoring NaNs.
+    Computes the histogram of an array using provided bins, ignoring NaNs.
 
     Args:
-        x: Input tensor (1D).
+        x: Input array (1D).
         bins: Precomputed bin edges [n_bins + 1].
         density: Whether to normalize the histogram.
 
@@ -281,82 +285,81 @@ def histogram_torch_update(
         bins: Bin edges [n_bins + 1].
     """
     # Remove NaNs
-    x = x[~torch.isnan(x)]
-    if x.numel() == 0:
+    x = x[~np.isnan(x)]
+    if x.size == 0:
         logger.warning(
-            "There are only NaNs in the input tensor for histogram computation."
+            "There are only NaNs in the input array for histogram computation."
         )
-        return torch.zeros(len(bins) - 1, device=x.device), bins
+        return np.zeros(len(bins) - 1, dtype=np.float32), bins
 
     n_bins = len(bins) - 1
-    count = torch.histc(
-        x,
-        bins=n_bins,
-        min=bins[0].item(),
-        max=bins[-1].item(),
-    )
+    count, _ = np.histogram(x, bins=bins)
+    count = count.astype(np.float32)
+
     if density:
-        count = count / x.numel() * n_bins
+        count = count / x.size * n_bins
     return count, bins
 
 
-class HistogramLoss(nn.Module):
+class HistogramLoss:
+    """Histogram-based loss computation."""
+
     @staticmethod
     def precompute_histograms(
-        x: torch.Tensor,
+        x: np.ndarray,
         n_bins: int,
     ) -> Tuple[
-        List[torch.Tensor],
-        List[torch.Tensor],
-        List[torch.Tensor],
-        List[torch.Tensor],
-        List[torch.Tensor],
+        List[np.ndarray],
+        List[np.ndarray],
+        List[np.ndarray],
+        List[np.ndarray],
+        List[np.ndarray],
     ]:
         """
         Precompute per-time, per-feature histograms of real data.
 
         Args:
-            x: Tensor [N, L, D].
+            x: Array [N, L, D].
             n_bins: Number of bins.
 
         Returns:
-            densities: List[L] of tensors [D, n_bins]
-            center_bin_locs: List[L] of tensors [D, n_bins]
-            bin_widths: List[L] of tensors [D]
-            bin_edges: List[L] of tensors [D, n_bins + 1]
-            sample_sizes: List[L] of tensors [D]
+            densities: List[L] of arrays [D, n_bins]
+            center_bin_locs: List[L] of arrays [D, n_bins]
+            bin_widths: List[L] of arrays [D]
+            bin_edges: List[L] of arrays [D, n_bins + 1]
+            sample_sizes: List[L] of arrays [D]
         """
         N, L, D = x.shape
-        densities: List[torch.Tensor] = []
-        center_bin_locs: List[torch.Tensor] = []
-        bin_widths: List[torch.Tensor] = []
-        bin_edges: List[torch.Tensor] = []
-        sample_sizes: List[torch.Tensor] = []
+        densities: List[np.ndarray] = []
+        center_bin_locs: List[np.ndarray] = []
+        bin_widths: List[np.ndarray] = []
+        bin_edges: List[np.ndarray] = []
+        sample_sizes: List[np.ndarray] = []
 
         for t in range(L):
-            per_time_densities: List[torch.Tensor] = []
-            per_time_center_locs: List[torch.Tensor] = []
-            per_time_widths: List[torch.Tensor] = []
-            per_time_bins: List[torch.Tensor] = []
-            per_time_sample_sizes: List[torch.Tensor] = []
+            per_time_densities: List[np.ndarray] = []
+            per_time_center_locs: List[np.ndarray] = []
+            per_time_widths: List[np.ndarray] = []
+            per_time_bins: List[np.ndarray] = []
+            per_time_sample_sizes: List[np.ndarray] = []
 
             for d in range(D):
                 x_ti = x[:, t, d].reshape(-1)
-                x_ti = x_ti[~torch.isnan(x_ti)]
+                x_ti = x_ti[~np.isnan(x_ti)]
 
-                if x_ti.numel() == 0:
-                    per_time_densities.append(torch.zeros(n_bins, device=x.device))
-                    per_time_center_locs.append(torch.zeros(n_bins, device=x.device))
-                    per_time_widths.append(torch.tensor(1.0, device=x.device))
-                    per_time_bins.append(torch.zeros(n_bins + 1, device=x.device))
-                    per_time_sample_sizes.append(torch.tensor(0, device=x.device))
+                if x_ti.size == 0:
+                    per_time_densities.append(np.zeros(n_bins, dtype=np.float32))
+                    per_time_center_locs.append(np.zeros(n_bins, dtype=np.float32))
+                    per_time_widths.append(np.array(1.0, dtype=np.float32))
+                    per_time_bins.append(np.zeros(n_bins + 1, dtype=np.float32))
+                    per_time_sample_sizes.append(np.array(0, dtype=np.float32))
                     continue
 
-                min_val = x_ti.min().item()
-                max_val = x_ti.max().item()
+                min_val = float(x_ti.min())
+                max_val = float(x_ti.max())
 
                 # Handle degenerate or single-sample cases
-                if x_ti.numel() > 1 and abs(max_val - min_val) < 1e-10:
+                if x_ti.size > 1 and abs(max_val - min_val) < 1e-10:
                     max_val += 1e-5
                     min_val -= 1e-5
                     logger.warning(
@@ -364,44 +367,40 @@ class HistogramLoss(nn.Module):
                         "Adding a small perturbation to the range. "
                         "The loss might not be as representative as desired."
                     )
-                elif x_ti.numel() == 1:
+                elif x_ti.size == 1:
                     max_val += 1e-5
                     min_val -= 1e-5
 
-                bins = torch.linspace(min_val, max_val, n_bins + 1, device=x.device)
-                density, bins = histogram_torch_update(x_ti, bins, density=True)
+                bins_arr = np.linspace(min_val, max_val, n_bins + 1, dtype=np.float32)
+                density_arr, bins_arr = histogram_numpy_update(x_ti, bins_arr, density=True)
 
-                per_time_densities.append(density)
-                bin_width = bins[1] - bins[0]
-                center_bin_loc = 0.5 * (bins[1:] + bins[:-1])
+                per_time_densities.append(density_arr)
+                bin_width = bins_arr[1] - bins_arr[0]
+                center_bin_loc = 0.5 * (bins_arr[1:] + bins_arr[:-1])
 
                 per_time_center_locs.append(center_bin_loc)
                 per_time_widths.append(bin_width)
-                per_time_bins.append(bins)
-                per_time_sample_sizes.append(
-                    torch.tensor(x_ti.numel(), device=x.device)
-                )
+                per_time_bins.append(bins_arr)
+                per_time_sample_sizes.append(np.array(x_ti.size, dtype=np.float32))
 
-            densities.append(torch.stack(per_time_densities, dim=0))  # [D, n_bins]
+            densities.append(np.stack(per_time_densities, axis=0))  # [D, n_bins]
             center_bin_locs.append(
-                torch.stack(per_time_center_locs, dim=0)
+                np.stack(per_time_center_locs, axis=0)
             )  # [D, n_bins]
-            bin_widths.append(torch.stack(per_time_widths, dim=0))  # [D]
-            bin_edges.append(torch.stack(per_time_bins, dim=0))  # [D, n_bins+1]
-            sample_sizes.append(torch.stack(per_time_sample_sizes, dim=0))  # [D]
+            bin_widths.append(np.stack(per_time_widths, axis=0))  # [D]
+            bin_edges.append(np.stack(per_time_bins, axis=0))  # [D, n_bins+1]
+            sample_sizes.append(np.stack(per_time_sample_sizes, axis=0))  # [D]
 
         return densities, center_bin_locs, bin_widths, bin_edges, sample_sizes
 
-    def __init__(self, x_real: torch.Tensor, n_bins: int):
+    def __init__(self, x_real: np.ndarray, n_bins: int):
         """
         Initializes the HistogramLoss with the real data distribution.
 
         Args:
-            x_real: Real data tensor of shape (N, L, D).
+            x_real: Real data array of shape (N, L, D).
             n_bins: Number of bins for the histograms.
         """
-        super().__init__()
-
         self.n_bins = n_bins
         self.num_samples, self.num_time_steps, self.num_features = x_real.shape
 
@@ -421,45 +420,23 @@ class HistogramLoss(nn.Module):
             n_bins,
         )
 
-        # Store as non-trainable parameters for safe device handling
-        self.densities = nn.ParameterList(
-            [nn.Parameter(density, requires_grad=False) for density in densities]
-        )
-        self.center_bin_locs = nn.ParameterList(
-            [nn.Parameter(loc, requires_grad=False) for loc in center_locs]
-        )
-        self.bin_widths = nn.ParameterList(
-            [nn.Parameter(width, requires_grad=False) for width in bin_widths]
-        )
-        self.bin_edges = nn.ParameterList(
-            [nn.Parameter(bins, requires_grad=False) for bins in bin_edges]
-        )
-        self.sample_sizes = nn.Parameter(
-            torch.stack(sample_sizes, dim=0), requires_grad=False
-        )  # [L, D]
+        # Store as regular lists of numpy arrays
+        self.densities = densities
+        self.center_bin_locs = center_locs
+        self.bin_widths = bin_widths
+        self.bin_edges = bin_edges
+        self.sample_sizes = np.stack(sample_sizes, axis=0)  # [L, D]
 
-    def compute(self, x_fake: torch.Tensor) -> torch.Tensor:
+    def compute(self, x_fake: np.ndarray) -> np.ndarray:
         """
         Computes the histogram loss between real and fake data distributions.
 
-        Notes:
-            We noticed issues in the case of the comparison of densities ala Dirac measure.
-            Use with caution in that case.
-
         Args:
-            x_fake: Fake data tensor of shape (N, L, D).
+            x_fake: Fake data array of shape (N, L, D).
 
         Returns:
-            all_losses: Tensor [L, D], loss per time per feature.
+            all_losses: Array [L, D], loss per time per feature.
         """
-        if x_fake.device != self.densities[0].device:
-            logger.warning(
-                f"x_fake is on device {x_fake.device}, "
-                f"but densities are on {self.densities[0].device}. "
-                "Moving x_fake to the correct device."
-            )
-            x_fake = x_fake.to(self.densities[0].device)
-
         assert (
             x_fake.shape[2] == self.num_features
         ), f"Expected {self.num_features} features in x_fake, but got {x_fake.shape[2]}."
@@ -467,63 +444,61 @@ class HistogramLoss(nn.Module):
             x_fake.shape[1] == self.num_time_steps
         ), f"Expected {self.num_time_steps} time steps in x_fake, but got {x_fake.shape[1]}."
 
-        all_losses: List[torch.Tensor] = []
+        all_losses: List[np.ndarray] = []
 
         for t in range(self.num_time_steps):
-            per_time_losses: List[torch.Tensor] = []
+            per_time_losses: List[float] = []
 
             for d in range(self.num_features):
-                loc: torch.Tensor = self.center_bin_locs[t][d]  # [n_bins]
+                loc: np.ndarray = self.center_bin_locs[t][d]  # [n_bins]
                 # If center locs are all zero, treat as empty / invalid
-                if (loc.abs() < 1e-16).all():
-                    per_time_losses.append(torch.tensor(2.0, device=x_fake.device))
+                if np.all(np.abs(loc) < 1e-16):
+                    per_time_losses.append(2.0)
                     continue
 
                 x_ti = x_fake[:, t, d].reshape(-1)
-                x_ti = x_ti[~torch.isnan(x_ti)].reshape(-1)
+                x_ti = x_ti[~np.isnan(x_ti)].reshape(-1)
 
-                if x_ti.numel() == 0:
-                    per_time_losses.append(torch.tensor(2.0, device=x_fake.device))
+                if x_ti.size == 0:
+                    per_time_losses.append(2.0)
                     continue
 
                 # Compute fake histogram using precomputed bin edges
                 edges = self.bin_edges[t][d]  # [n_bins+1]
-                density_fake = torch.histc(
+                density_fake, _ = np.histogram(
                     x_ti,
-                    bins=self.n_bins,
-                    min=edges[0].item(),
-                    max=edges[-1].item(),
+                    bins=edges,
                 )
-                density_fake = density_fake / x_ti.numel() * self.n_bins
+                density_fake = density_fake.astype(np.float32) / x_ti.size * self.n_bins
 
-                abs_metric = torch.abs(density_fake - self.densities[t][d]).mean()
+                abs_metric = float(np.abs(density_fake - self.densities[t][d]).mean())
 
-                num_samples_oob = torch.sum((x_ti < edges[0]) | (x_ti > edges[-1]))
-                out_of_bound_error = num_samples_oob / x_ti.numel()
+                num_samples_oob = np.sum((x_ti < edges[0]) | (x_ti > edges[-1]))
+                out_of_bound_error = float(num_samples_oob / x_ti.size)
 
                 per_time_losses.append(abs_metric + out_of_bound_error)
 
-            all_losses.append(torch.stack(per_time_losses, dim=0))
+            all_losses.append(np.array(per_time_losses, dtype=np.float32))
 
         if not all_losses:
             logger.error(
                 "All time steps and features contain NaNs or empty data, yielding no valid losses."
             )
-            return torch.tensor(1.0, device=x_fake.device)
+            return np.array(1.0, dtype=np.float32)
 
-        all_losses_tensor = torch.stack(all_losses, dim=0)  # [L, D]
-        return all_losses_tensor / 2.0
+        all_losses_array = np.stack(all_losses, axis=0)  # [L, D]
+        return all_losses_array / 2.0
 
-    def _weigh_by_sample_size(self, loss: torch.Tensor) -> torch.Tensor:
+    def _weigh_by_sample_size(self, loss: np.ndarray) -> float:
         assert (
             loss.shape == self.sample_sizes.shape
         ), f"Loss and sample sizes should have the same shape, but got {loss.shape} and {self.sample_sizes.shape}."
         weights = self.sample_sizes / self.sample_sizes.sum()
-        return (loss * weights).sum()
+        return float((loss * weights).sum())
 
-    def forward(
-        self, x_fake: torch.Tensor, ignore_features: Optional[List[int]] = None
-    ) -> torch.Tensor:
+    def __call__(
+        self, x_fake: np.ndarray, ignore_features: Optional[List[int]] = None
+    ) -> float:
         """
         Weighted scalar histogram loss, optionally ignoring some feature indices.
         """
@@ -535,27 +510,26 @@ class HistogramLoss(nn.Module):
             ):
                 return self._weigh_by_sample_size(base_loss)
 
-            ignore_indices = torch.tensor(
-                ignore_features, dtype=torch.long, device=base_loss.device
-            )
-            mask = torch.ones(
-                self.num_features, dtype=torch.bool, device=base_loss.device
-            )
+            ignore_indices = np.array(ignore_features, dtype=np.int64)
+            mask = np.ones(self.num_features, dtype=bool)
             mask[ignore_indices] = False
 
-            masked_loss = self._weigh_by_sample_size(base_loss[:, mask])
-            return masked_loss
+            # Need to adjust sample_sizes for masked features
+            masked_sample_sizes = self.sample_sizes[:, mask]
+            masked_loss = base_loss[:, mask]
+            weights = masked_sample_sizes / masked_sample_sizes.sum()
+            return float((masked_loss * weights).sum())
         except Exception as e:
             logger.error(
                 f"Error in the computation of the HistogramLoss. "
                 f"Return maximal error. Details: {e}"
             )
-            return torch.tensor(1.0, device=x_fake.device)
+            return 1.0
 
 
 def evaluate_generation(
-    x_fake: torch.Tensor,
-    x_real: torch.Tensor,
+    x_fake: np.ndarray,
+    x_real: np.ndarray,
     max_lag: int = 64,
     n_bins: int = 32,
     stationary_acf: bool = True,
@@ -584,7 +558,7 @@ def evaluate_generation(
     """
     # Histogram loss
     hist_loss_module = HistogramLoss(x_real, n_bins=n_bins)
-    histogram_value = hist_loss_module(x_fake).item()
+    histogram_value = hist_loss_module(x_fake)
 
     # ACF loss
     acf_loss_module = ACFLoss(
@@ -594,7 +568,7 @@ def evaluate_generation(
         name="acf",
         reg=1.0,
     )
-    acf_value = acf_loss_module(x_fake).item()
+    acf_value = acf_loss_module(x_fake)
 
     # Cross-correlation loss (uses Loss.forward -> mean over matrix)
     cc_module = cross_correlation(
@@ -602,7 +576,7 @@ def evaluate_generation(
         name="crosscorr",
         reg=1.0,
     )
-    cross_corr_value = cc_module(x_fake).item()
+    cross_corr_value = cc_module(x_fake)
 
     return {
         "histloss": float(histogram_value),
