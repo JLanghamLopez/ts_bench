@@ -1,3 +1,5 @@
+# flake8: noqa
+# isort: skip_file
 """
 Unit tests for torch-to-numpy migration consistency.
 
@@ -8,37 +10,38 @@ The expected values were pre-computed using the torch-based functions
 with the deterministic random seeds defined in conftest.py.
 """
 
-import numpy as np
-import pytest
+import os
 
 # Import the evaluation functions (will be numpy-based after migration)
 import sys
-import os
+
+import numpy as np
+import pytest
 
 # Add project root to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from data.task_bank import TaskType
 from ts_bench.agents.ts_task_agent.eval_fn_combined import (
-    rmse,
+    ACFLoss,
+    HistogramLoss,
+    _corrcoef_from_batch,
+    acf_numpy,
+    cacf_numpy,
+    cross_correlation,
+    eval_forecasting,
+    eval_generation,
+    histogram_numpy_update,
     mae,
     mape,
-    eval_forecasting,
-    acf_numpy,
     non_stationary_acf_numpy,
-    cacf_numpy,
-    HistogramLoss,
-    ACFLoss,
-    cross_correlation,
-    eval_generation,
-    _corrcoef_from_batch,
-    histogram_numpy_update,
+    rmse,
 )
 from ts_bench.agents.ts_task_agent.utils import (
-    validate_inputs,
     _ensure_ndarray,
+    validate_inputs,
 )
-from data.task_bank import TaskType
 
 # Numerical tolerance for comparisons
 RTOL = 1e-5
@@ -58,22 +61,25 @@ class TestForecastingMetrics:
         """Test RMSE matches expected torch output."""
         pred, gt = sample_forecasting_data
         result = rmse(pred, gt)
-        assert np.isclose(result, self.EXPECTED_RMSE, rtol=RTOL, atol=ATOL), \
-            f"RMSE mismatch: {result} vs expected {self.EXPECTED_RMSE}"
+        assert np.isclose(
+            result, self.EXPECTED_RMSE, rtol=RTOL, atol=ATOL
+        ), f"RMSE mismatch: {result} vs expected {self.EXPECTED_RMSE}"
 
     def test_mae_consistency(self, sample_forecasting_data):
         """Test MAE matches expected torch output."""
         pred, gt = sample_forecasting_data
         result = mae(pred, gt)
-        assert np.isclose(result, self.EXPECTED_MAE, rtol=RTOL, atol=ATOL), \
-            f"MAE mismatch: {result} vs expected {self.EXPECTED_MAE}"
+        assert np.isclose(
+            result, self.EXPECTED_MAE, rtol=RTOL, atol=ATOL
+        ), f"MAE mismatch: {result} vs expected {self.EXPECTED_MAE}"
 
     def test_mape_consistency(self, sample_forecasting_data):
         """Test MAPE matches expected torch output."""
         pred, gt = sample_forecasting_data
         result = mape(pred, gt)
-        assert np.isclose(result, self.EXPECTED_MAPE, rtol=RTOL, atol=ATOL), \
-            f"MAPE mismatch: {result} vs expected {self.EXPECTED_MAPE}"
+        assert np.isclose(
+            result, self.EXPECTED_MAPE, rtol=RTOL, atol=ATOL
+        ), f"MAPE mismatch: {result} vs expected {self.EXPECTED_MAPE}"
 
     def test_eval_forecasting_consistency(self, sample_forecasting_data):
         """Test eval_forecasting returns all metrics correctly."""
@@ -98,8 +104,10 @@ class TestACFFunctions:
         max_lag = 10
         result = acf_numpy(x, max_lag, dim=(0, 1))
 
-        assert result.shape == (max_lag, 3), \
-            f"ACF shape mismatch: {result.shape} vs expected (10, 3)"
+        assert result.shape == (
+            max_lag,
+            3,
+        ), f"ACF shape mismatch: {result.shape} vs expected (10, 3)"
 
     def test_acf_numpy_values(self, sample_3d_tensor):
         """Test ACF values are within valid correlation range."""
@@ -112,7 +120,7 @@ class TestACFFunctions:
             np.asarray(result[0]),
             np.ones(3),
             rtol=1e-4,
-            err_msg="ACF at lag 0 should be ~1.0"
+            err_msg="ACF at lag 0 should be ~1.0",
         )
 
     def test_non_stationary_acf_shape(self, sample_3d_tensor):
@@ -121,8 +129,11 @@ class TestACFFunctions:
         result = non_stationary_acf_numpy(x, symmetric=False)
 
         # Shape should be [T, T, D]
-        assert result.shape == (48, 48, 3), \
-            f"Non-stationary ACF shape mismatch: {result.shape}"
+        assert result.shape == (
+            48,
+            48,
+            3,
+        ), f"Non-stationary ACF shape mismatch: {result.shape}"
 
     def test_cacf_numpy_shape(self, sample_3d_tensor):
         """Test cross-ACF output shape."""
@@ -132,8 +143,11 @@ class TestACFFunctions:
 
         # Shape should be [B, N_pairs, lags] where N_pairs = D*(D+1)/2 = 6
         expected_pairs = 3 * (3 + 1) // 2  # = 6
-        assert result.shape == (32, expected_pairs, lags), \
-            f"CACF shape mismatch: {result.shape}"
+        assert result.shape == (
+            32,
+            expected_pairs,
+            lags,
+        ), f"CACF shape mismatch: {result.shape}"
 
 
 class TestHistogramLoss:
@@ -157,8 +171,10 @@ class TestHistogramLoss:
 
         # Result should be [L, D] = [16, 2]
         result_arr = np.asarray(result)
-        assert result_arr.shape == (16, 2), \
-            f"Histogram loss shape mismatch: {result_arr.shape}"
+        assert result_arr.shape == (
+            16,
+            2,
+        ), f"Histogram loss shape mismatch: {result_arr.shape}"
 
         # All losses should be non-negative
         assert np.all(result_arr >= 0), "Histogram losses should be non-negative"
@@ -185,8 +201,10 @@ class TestCrossCorrelation:
         result = _corrcoef_from_batch(x)
 
         result_arr = np.asarray(result)
-        assert result_arr.shape == (4, 4), \
-            f"Corrcoef shape mismatch: {result_arr.shape}"
+        assert result_arr.shape == (
+            4,
+            4,
+        ), f"Corrcoef shape mismatch: {result_arr.shape}"
 
     def test_corrcoef_diagonal(self):
         """Test correlation matrix has 1s on diagonal."""
@@ -199,7 +217,7 @@ class TestCrossCorrelation:
             np.diag(result_arr),
             np.ones(4),
             rtol=1e-4,
-            err_msg="Diagonal of correlation matrix should be ~1.0"
+            err_msg="Diagonal of correlation matrix should be ~1.0",
         )
 
     def test_cross_correlation_loss(self, small_generation_data):
@@ -219,11 +237,7 @@ class TestACFLoss:
         """Test ACFLoss with stationary mode."""
         x_fake, x_real = small_generation_data
         acf_loss = ACFLoss(
-            x_real=x_real,
-            max_lag=8,
-            stationary=True,
-            name="acf",
-            reg=1.0
+            x_real=x_real, max_lag=8, stationary=True, name="acf", reg=1.0
         )
         result = acf_loss(x_fake)
 
@@ -234,11 +248,7 @@ class TestACFLoss:
         """Test ACFLoss with non-stationary mode."""
         x_fake, x_real = small_generation_data
         acf_loss = ACFLoss(
-            x_real=x_real,
-            max_lag=8,
-            stationary=False,
-            name="acf",
-            reg=1.0
+            x_real=x_real, max_lag=8, stationary=False, name="acf", reg=1.0
         )
         result = acf_loss(x_fake)
 
@@ -259,10 +269,7 @@ class TestEvalGeneration:
         """Test eval_generation returns all expected metrics."""
         x_fake, x_real = small_generation_data
         result = eval_generation(
-            x_fake, x_real,
-            max_lag=8,
-            n_bins=16,
-            stationary_acf=True
+            x_fake, x_real, max_lag=8, n_bins=16, stationary_acf=True
         )
 
         assert "histloss" in result
@@ -282,8 +289,9 @@ class TestEvalGeneration:
         result2 = eval_generation(x_fake, x_real, max_lag=8, n_bins=16)
 
         for key in result1:
-            assert np.isclose(result1[key], result2[key], rtol=1e-6), \
-                f"{key} not deterministic: {result1[key]} vs {result2[key]}"
+            assert np.isclose(
+                result1[key], result2[key], rtol=1e-6
+            ), f"{key} not deterministic: {result1[key]} vs {result2[key]}"
 
 
 class TestValidateInputs:
@@ -292,9 +300,7 @@ class TestValidateInputs:
     def test_validate_inputs_valid_forecasting(self, sample_forecasting_data):
         """Test validation passes for valid forecasting data."""
         pred, gt = sample_forecasting_data
-        is_valid, error = validate_inputs(
-            TaskType.TIME_SERIES_FORECASTING, pred, gt
-        )
+        is_valid, error = validate_inputs(TaskType.TIME_SERIES_FORECASTING, pred, gt)
         assert is_valid, f"Validation should pass: {error}"
         assert error is None
 
@@ -312,9 +318,7 @@ class TestValidateInputs:
         pred = np.random.randn(10, 5, 3).astype(np.float32)
         gt = np.random.randn(10, 6, 3).astype(np.float32)
 
-        is_valid, error = validate_inputs(
-            TaskType.TIME_SERIES_FORECASTING, pred, gt
-        )
+        is_valid, error = validate_inputs(TaskType.TIME_SERIES_FORECASTING, pred, gt)
         assert not is_valid
         assert error is not None
         assert "mismatch" in error.lower()
@@ -324,9 +328,7 @@ class TestValidateInputs:
         pred = np.random.randn(10, 5, 3).astype(np.float64)  # Wrong dtype
         gt = np.random.randn(10, 5, 3).astype(np.float32)
 
-        is_valid, error = validate_inputs(
-            TaskType.TIME_SERIES_FORECASTING, pred, gt
-        )
+        is_valid, error = validate_inputs(TaskType.TIME_SERIES_FORECASTING, pred, gt)
         assert not is_valid
         assert error is not None
         assert "float32" in error.lower() or "dtype" in error.lower()
@@ -337,9 +339,7 @@ class TestValidateInputs:
         pred[0, 0, 0] = np.nan
         gt = np.random.randn(10, 5, 3).astype(np.float32)
 
-        is_valid, error = validate_inputs(
-            TaskType.TIME_SERIES_FORECASTING, pred, gt
-        )
+        is_valid, error = validate_inputs(TaskType.TIME_SERIES_FORECASTING, pred, gt)
         assert not is_valid
         assert error is not None
         assert "nan" in error.lower()
@@ -350,9 +350,7 @@ class TestValidateInputs:
         pred[0, 0, 0] = np.inf
         gt = np.random.randn(10, 5, 3).astype(np.float32)
 
-        is_valid, error = validate_inputs(
-            TaskType.TIME_SERIES_FORECASTING, pred, gt
-        )
+        is_valid, error = validate_inputs(TaskType.TIME_SERIES_FORECASTING, pred, gt)
         assert not is_valid
         assert error is not None
         assert "inf" in error.lower()
@@ -403,4 +401,3 @@ class TestHistogramNumpyUpdate:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

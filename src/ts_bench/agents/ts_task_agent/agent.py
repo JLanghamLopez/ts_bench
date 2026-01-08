@@ -27,11 +27,14 @@ from .evaluation import (
     _compute_score,
     aggregate_scores,
     failed_result,
-    run_eval_fn,
-    validate_inputs,
 )
 from .task import AssignmentMessage, create_assignment_message
-from .utils import check_response, load_ground_truth, load_predictions
+from .utils import (
+    check_response,
+    load_ground_truth,
+    load_predictions,
+    validate_inputs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -219,7 +222,7 @@ class TSTaskAgent(GreenAgent):
         self,
         predictions_path: str,
         assignment: TaskDefinition,
-    ) -> TaskResult:
+    ) -> Optional[TaskResult]:
         """
         Run the correct_fn evaluation for the given task_type.
         This is a placeholder that will call the appropriate evaluation function.
@@ -259,7 +262,6 @@ class TSTaskAgent(GreenAgent):
             raise FileNotFoundError(
                 f"Missing ground-truth file. Tried: {candidates} in {task_dir}"
             )
-            return
 
         gt_tensor = load_ground_truth(gt_path)
 
@@ -269,7 +271,6 @@ class TSTaskAgent(GreenAgent):
             raise ValueError(
                 f"Validation failed for task_id={assignment.task_id}: {err}"
             )
-            return
 
         # Choose the correct evaluation function based on task type
         eval_fn = (
@@ -279,12 +280,7 @@ class TSTaskAgent(GreenAgent):
         )
 
         # run the evaluation
-        raw_metrics = run_eval_fn(
-            eval_fn=eval_fn,
-            pred_tensor=pred_tensor,
-            gt_tensor=gt_tensor,
-            batch_size=self.test_batch_size,
-        )
+        raw_metrics = eval_fn(pred_tensor, gt_tensor)
 
         # compute average normalized score
         score = _compute_score(raw_metrics)

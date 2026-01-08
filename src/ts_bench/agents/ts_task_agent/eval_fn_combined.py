@@ -38,9 +38,7 @@ def eval_forecasting(y_pred: np.ndarray, y_true: np.ndarray) -> dict[str, float]
 
 
 # ----------------- Time-series-generation evaluation functions -------------------
-def acf_numpy(
-    x: np.ndarray, max_lag: int, dim: Tuple[int, ...] = (0, 1)
-) -> np.ndarray:
+def acf_numpy(x: np.ndarray, max_lag: int, dim: Tuple[int, ...] = (0, 1)) -> np.ndarray:
     """
     Computes (possibly multivariate) autocorrelation function along time dimension.
 
@@ -64,7 +62,7 @@ def acf_numpy(
             # Correct slicing over all three dims
             y = x[:, i:, :] * x[:, :-i, :]
         else:
-            y = x ** 2
+            y = x**2
 
         acf_i = np.mean(y, axis=dim) / var
         acf_list.append(acf_i)
@@ -115,9 +113,7 @@ def non_stationary_acf_numpy(
     return correlations
 
 
-def cacf_numpy(
-    x: np.ndarray, lags: int, dim: Tuple[int, ...] = (0, 1)
-) -> np.ndarray:
+def cacf_numpy(x: np.ndarray, lags: int, dim: Tuple[int, ...] = (0, 1)) -> np.ndarray:
     """
     Computes the cross-correlation between feature dimension pairs over time.
 
@@ -196,7 +192,7 @@ class Loss:
 
 def acf_diff(x: np.ndarray) -> np.ndarray:
     # x: e.g. [lags, D] or [T, T, D]; sum over first axis
-    return np.sqrt((x ** 2).sum(axis=0))
+    return np.sqrt((x**2).sum(axis=0))
 
 
 def cc_diff(x: np.ndarray) -> np.ndarray:
@@ -404,7 +400,9 @@ class HistogramLoss:
                     min_val -= 1e-5
 
                 bins_arr = np.linspace(min_val, max_val, n_bins + 1, dtype=np.float32)
-                density_arr, bins_arr = histogram_numpy_update(x_ti, bins_arr, density=True)
+                density_arr, bins_arr = histogram_numpy_update(
+                    x_ti, bins_arr, density=True
+                )
 
                 per_time_densities.append(density_arr)
                 bin_width = bins_arr[1] - bins_arr[0]

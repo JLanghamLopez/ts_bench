@@ -16,10 +16,9 @@ dependencies = [
     "pandas (>=2.3.3,<3.0.0)"
 ]
 
-[tool.poetry]
-
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^4.5.0"
+pytest = "^9.0.2"
 
 [tool.poetry.group.benchmark.dependencies]
 pandas = "^2.3.3"

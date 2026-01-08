@@ -56,4 +56,3 @@ def small_generation_data(seed):
     x_fake = np.random.randn(20, 16, 2).astype(np.float32)
     x_real = np.random.randn(20, 16, 2).astype(np.float32)
     return x_fake, x_real
-

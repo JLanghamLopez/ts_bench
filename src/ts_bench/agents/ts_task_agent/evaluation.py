@@ -1,8 +1,6 @@
 import json
 import logging
-from typing import Callable, Dict, Optional, Tuple
 
-import numpy as np
 from litellm import acompletion
 from pydantic import BaseModel
 
@@ -69,112 +67,6 @@ def failed_result(predictions_path: str, task: TaskDefinition) -> TaskResult:
         score=0.0,
         prediction_path=predictions_path,
     )
-
-
-# Input validation
-def validate_inputs(
-    task_type: TaskType,
-    pred: np.ndarray,
-    gt: np.ndarray,
-) -> Tuple[bool, Optional[str]]:
-    try:
-        if pred is None:
-            raise ValueError("Prediction tensor is None.")
-        if gt is None:
-            raise ValueError("Ground truth tensor is None.")
-
-        # rank check
-        if pred.ndim != gt.ndim:
-            raise ValueError(
-                f"Prediction rank {pred.ndim} != ground truth rank {gt.ndim}."
-            )
-
-        # both must be 3D: [N, T or H, D]
-        if pred.ndim != 3:
-            raise ValueError(
-                f"Tensors must be 3D [N, T_or_H, D], got pred.shape={pred.shape}."
-            )
-
-        # Dtype check
-        if pred.dtype != np.float32:
-            raise ValueError(f"Prediction dtype must be float32, got {pred.dtype}.")
-        if gt.dtype != np.float32:
-            raise ValueError(f"Ground truth dtype must be float32, got {gt.dtype}.")
-
-        # NaN / Inf check
-        if np.isnan(pred).any():
-            raise ValueError("Predictions contain NaN values.")
-        if np.isinf(pred).any():
-            raise ValueError("Predictions contain Inf values.")
-
-        if np.isnan(gt).any():
-            raise ValueError("Ground truth contains NaN values.")
-
-        # Shape match per task type
-        if task_type == TaskType.TIME_SERIES_FORECASTING:
-            # pred: [N, horizon, D]
-            # gt  : [N, horizon, D]
-            if pred.shape != gt.shape:
-                raise ValueError(
-                    f"Forecasting shape mismatch: pred {pred.shape} != gt {gt.shape}"
-                )
-
-        elif task_type == TaskType.TIME_SERIES_GENERATION:
-            # pred: [N, T, D]
-            # gt  : [N, T, D]
-            if pred.shape != gt.shape:
-                raise ValueError(
-                    f"Generation shape mismatch: pred {pred.shape} != gt {gt.shape}"
-                )
-
-        else:
-            raise ValueError(f"Unsupported task type {task_type}")
-
-        # Device check: Not needed for numpy (CPU only)
-
-        return True, None
-
-    except Exception as e:
-        return False, str(e)
-
-
-# evaluation dispatcher with batch support
-def run_eval_fn(
-    eval_fn: Callable[[np.ndarray, np.ndarray], Dict[str, float]],
-    pred_tensor: np.ndarray,
-    gt_tensor: np.ndarray,
-    batch_size: Optional[int] = None,
-) -> Dict[str, float]:
-    """
-    Evaluate forecasting or generation tasks.
-
-    If batch_size is None:
-         evaluate on entire test set at once.
-
-    If batch_size is integer:
-         evaluate in mini-batches and average metrics.
-    """
-
-    # whole-test evaluation (default)
-    if batch_size is None:
-        return eval_fn(pred_tensor, gt_tensor)
-
-    # mini-batch evaluation
-    N = pred_tensor.shape[0]
-    outputs = []
-
-    for i in range(0, N, batch_size):
-        p_batch = pred_tensor[i : i + batch_size]
-        g_batch = gt_tensor[i : i + batch_size]
-
-        outputs.append(eval_fn(p_batch, g_batch))
-
-    # aggregate batch metrics
-    final_metrics = {}
-    for key in outputs[0].keys():
-        final_metrics[key] = float(np.mean([o[key] for o in outputs]))
-
-    return final_metrics
 
 
 def _normalize_metric(
