@@ -31,6 +31,7 @@ from .evaluation import (
 )
 from .task import AssignmentMessage, create_assignment_message
 from .utils import check_response, load_ground_truth, validate_inputs
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -143,51 +144,59 @@ class TSTaskAgent(GreenAgent):
                     url=participant_url,
                     new_conversation=new_conversation,
                 )
+                try:
+                    parsed = json.loads(response)
+                except Exception as e:
+                    raise ValueError(f"Response is not valid JSON: {response}") from e
+                result = np.array(parsed['task_result']['pred'])
+                logging.info(f'Received results for task {task.name} with shape: {result.shape}')
 
-                logger.info("Received response from participant agent: %s", response)
-
-                check_response(response)
                 await updater.start_work(
                     new_agent_text_message(
                         "Received prediction path from participant. Starting evaluation.",
                         context_id=updater.context_id,
                     ),
                 )
-                try:
-                    evaluation_result = await self._evaluate_predictions(
-                        predictions_path=response,
-                        assignment=task,
-                    )
+                """
+                TODO:
+                - Rewrite the commented sections below and refactor the `evaluate_predictions` function
+                to operate directly on NumPy array {result} rather than file paths.
+                """
+            #     try:
+            #         evaluation_result = await self._evaluate_predictions(
+            #             predictions_path=response,
+            #             assignment=task,
+            #         )
 
-                except Exception as e:
-                    msg = f"Evaluation failed for task number {i}': {e}"
-                    logger.error(msg, exc_info=True)
-                    await updater.start_work(
-                        new_agent_text_message(msg, context_id=updater.context_id),
-                    )
-                    evaluation_result = failed_result(response, task)
+            #     except Exception as e:
+            #         msg = f"Evaluation failed for task number {i}': {e}"
+            #         logger.error(msg, exc_info=True)
+            #         await updater.start_work(
+            #             new_agent_text_message(msg, context_id=updater.context_id),
+            #         )
+            #         evaluation_result = failed_result(response, task)
 
-                results.append(evaluation_result)
+            #     results.append(evaluation_result)
 
-                logger.info(
-                    "Evaluation complete for task %d: %s\n"
-                    "Score: %.2f/10\n"
-                    "Evaluation Summary:\n%s",
-                    i,
-                    task.name,
-                    evaluation_result.score,
-                    evaluation_result.model_dump_json(indent=2),
-                )
+            #     logger.info(
+            #         "Evaluation complete for task %d: %s\n"
+            #         "Score: %.2f/10\n"
+            #         "Evaluation Summary:\n%s",
+            #         i,
+            #         task.name,
+            #         evaluation_result.score,
+            #         evaluation_result.model_dump_json(indent=2),
+            #     )
 
-                # Return final evaluation results
-                await updater.start_work(
-                    new_agent_text_message(
-                        f"Evaluation complete for task {i}: {task.name} "
-                        f"Score: {evaluation_result.score:.2f}/10\n\n"
-                        f"Evaluation Summary:\n{evaluation_result.model_dump_json()}",
-                        context_id=updater.context_id,
-                    ),
-                )
+            #     # Return final evaluation results
+            #     await updater.start_work(
+            #         new_agent_text_message(
+            #             f"Evaluation complete for task {i}: {task.name} "
+            #             f"Score: {evaluation_result.score:.2f}/10\n\n"
+            #             f"Evaluation Summary:\n{evaluation_result.model_dump_json()}",
+            #             context_id=updater.context_id,
+            #         ),
+            #     )
 
             except Exception as e:
                 msg = f"Failed to communicate with participant agent or parse response: {e}"

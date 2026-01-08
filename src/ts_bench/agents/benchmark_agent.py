@@ -48,15 +48,11 @@ def parse_tasks_from_message(message: str) -> List[Dict]:
     for line in message.split("\n"):
         line = line.strip()
 
-        if line.startswith("- **Task ID**:"):
-            current["task_id"] = line.split(":")[1].strip()
-        elif line.startswith("- **Data URL**:"):
-            current["data_url"] = line.split(": ")[1].strip()
-        elif line.startswith("### Task"):
-            # New task, push previous
-            if current:
-                tasks.append(current)
-            current = {}
+        if "task_id" in line:
+            current["task_id"] = line.split(": ")[1].strip().replace('"', '')
+        elif "url" in line:
+            current["data_url"] = line.split(": ")[1].strip().replace('"', '')
+
 
     if current:
         tasks.append(current)
@@ -140,9 +136,8 @@ async def generate_solver_code(
 ) -> str:
     """
     Ask OpenAI to write Python code that:
-    - downloads the dataset
-    - trains a forecasting model
-    - outputs a CSV file of predictions
+    - trains a model
+    - outputs a npy file of predictions
     """
 
     prompt = f"""
@@ -154,11 +149,10 @@ Here is a template Python code to help you get started:
 Write Python code that:
 
 1. Loads training/validation sets.
-2. Trains a forecasting model (any reasonable baseline).
+2. Trains a model (any reasonable baseline).
 3. Predicts the test set.
-4. Saves a CSV file containing predictions in this exact path:
-   /tmp/{task_id}.csv
-5. The CSV must contain only one column: 'prediction'
+4. Saves a npy file containing predictions in this exact path:
+   /tmp/{task_id}.npy
 
 ONLY the following libraries are available for import:
 
@@ -246,6 +240,7 @@ class BaselineExecutorExecutor(AgentExecutor):
         # STEP 2 — For each task, generate solver code via OpenAI
         # --------------------------------------------------
         prediction_paths = {}
+
         for t in task_defs:
             task_id = t["task_id"]
             data_url = t["data_url"]
@@ -267,20 +262,21 @@ class BaselineExecutorExecutor(AgentExecutor):
 
             try:
                 await run_generated_code(solver_code, task_id)
+                # load predictions
+                preds = np.load(f"/tmp/{task_id}.npy")
             except Exception as e:
                 logger.error(f"Error running solver for task {task_id}: {e}")
                 logger.warning("Using dummy predictions instead.")
                 # create dummy predictions
-                dummy_preds = np.zeros(target_shape)
-                df = pd.DataFrame({"prediction": dummy_preds.flatten()})
-                df.to_csv(f"/tmp/{task_id}.csv", index=False)
-            prediction_paths = f"/tmp/{task_id}.csv"
+                preds = np.random.randn(*target_shape)
+
+            pay_load = {'task_result':{"pred": preds.tolist()}}
 
         # --------------------------------------------------
         # STEP 3 — Return JSON mapping
         # --------------------------------------------------
 
-        final_message = json.dumps(prediction_paths)
+        final_message = json.dumps(pay_load)
 
         await updater.update_status(
             TaskState.working,

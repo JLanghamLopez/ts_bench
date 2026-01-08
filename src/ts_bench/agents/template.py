@@ -8,11 +8,8 @@ val_X = pd.read_pickle(f"{data_root_dir}/dataset/val_X.pkl")
 val_Y = pd.read_pickle(f"{data_root_dir}/dataset/val_Y.pkl")
 test_X = pd.read_pickle(f"{data_root_dir}/dataset/test_X.pkl")
 
-print(
-    "Data loaded successfully.",
-    train_X.shape,
-    train_Y.shape,
-    val_X.shape,
-    val_Y.shape,
-    test_X.shape,
-)
+# Train a simple model 
+
+# Get the test predictions
+
+# Save predictions to a npy file
