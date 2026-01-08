@@ -38,22 +38,15 @@ client = OpenAI()
 # -----------------------------------------------------------
 # Utility: Extract tasks from assignment message
 # -----------------------------------------------------------
-def parse_tasks_from_message(message: str) -> List[Dict]:
+def parse_tasks_from_message(message: Dict) -> List[Dict]:
     """
-    Extract task_id and data_url from the assignment message text.
+    Extract task_id and data_url from the JSON message.
     """
     tasks = []
     current = {}
 
-    for line in message.split("\n"):
-        line = line.strip()
-
-        if "task_id" in line:
-            current["task_id"] = line.split(": ")[1].strip().replace('"', '')
-        elif "url" in line:
-            current["data_url"] = line.split(": ")[1].strip().replace('"', '')
-
-
+    current["task_id"] = message['task_specification']['task_id']
+    current["data_url"] = message['task_specification']['url']
     if current:
         tasks.append(current)
 
@@ -124,6 +117,11 @@ def download_and_parse_kaggle_timeseries_dataset(dataset_url: str) -> dict:
         "root_dir": tmp_dir,
         "task_description": task_description,
         "eval_fn_path": eval_fn_path,
+        "train_X": os.path.join(data_dir, "train_X.pkl"),
+        "train_Y": os.path.join(data_dir, "train_Y.pkl"),
+        "val_X": os.path.join(data_dir, "val_X.pkl"),
+        "val_Y": os.path.join(data_dir, "val_Y.pkl"),
+        "test_X": os.path.join(data_dir, "test_X.pkl"),
         "target_shape": (bs, t, c),
     }
 
@@ -132,8 +130,14 @@ def download_and_parse_kaggle_timeseries_dataset(dataset_url: str) -> dict:
 # Utility: Call OpenAI to generate Python code
 # -----------------------------------------------------------
 async def generate_solver_code(
-    task_id: str, task_description: str, data_root_dir: str, template_python: str
-) -> str:
+    task_id: str, 
+    task_description: str,     
+    train_X: str,
+    train_Y: str,
+    val_X: str,
+    val_Y: str,
+    test_X: str,
+    ) -> str:
     """
     Ask OpenAI to write Python code that:
     - trains a model
@@ -142,9 +146,12 @@ async def generate_solver_code(
 
     prompt = f"""
 You are a Python time-series ML engineer. You are given a task with the description: {task_description}
-Dataset is already downloaded and available locally at: {data_root_dir}
-Here is a template Python code to help you get started:
-{template_python}
+You are provided with dataset file paths:
+- train_X: {train_X}
+- train_Y: {train_Y}
+- val_X: {val_X}
+- val_Y: {val_Y}
+- test_X: {test_X}
 
 Write Python code that:
 
@@ -212,12 +219,6 @@ class BaselineExecutorExecutor(AgentExecutor):
         if msg is None:
             raise ServerError(error=InvalidParamsError(message="Missing message."))
 
-        # read template code from file
-        template_python = ""
-        template_path = os.path.join(os.path.dirname(__file__), "template.py")
-        with open(template_path, "r") as f:
-            template_python = f.read()
-
         task = new_task(msg)
         await event_queue.enqueue_event(task)
 
@@ -232,14 +233,14 @@ class BaselineExecutorExecutor(AgentExecutor):
         )
 
         # --------------------------------------------------
-        # STEP 1 — Parse incoming message from TSTaskAgent
+        # STEP 1 — Parse incoming JSON message from TSTaskAgent
         # --------------------------------------------------
-        task_defs = parse_tasks_from_message(f"{msg_obj}")
+        task_defs = parse_tasks_from_message(json.loads(msg_obj))
+
 
         # --------------------------------------------------
         # STEP 2 — For each task, generate solver code via OpenAI
         # --------------------------------------------------
-        prediction_paths = {}
 
         for t in task_defs:
             task_id = t["task_id"]
@@ -257,7 +258,13 @@ class BaselineExecutorExecutor(AgentExecutor):
             )
 
             solver_code = await generate_solver_code(
-                task_id, task_description, data_root_dir, template_python
+                task_id=task_id,
+                task_description=task_description,
+                train_X=parsed_data["train_X"],
+                train_Y=parsed_data["train_Y"],
+                val_X=parsed_data["val_X"],
+                val_Y=parsed_data["val_Y"],
+                test_X=parsed_data["test_X"],
             )
 
             try:
@@ -270,7 +277,7 @@ class BaselineExecutorExecutor(AgentExecutor):
                 # create dummy predictions
                 preds = np.random.randn(*target_shape)
 
-            pay_load = {'task_result':{"pred": preds.tolist()}}
+            pay_load = {"predictions": preds.tolist()}
 
         # --------------------------------------------------
         # STEP 3 — Return JSON mapping

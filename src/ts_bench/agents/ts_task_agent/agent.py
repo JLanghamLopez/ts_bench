@@ -148,7 +148,7 @@ class TSTaskAgent(GreenAgent):
                     parsed = json.loads(response)
                 except Exception as e:
                     raise ValueError(f"Response is not valid JSON: {response}") from e
-                result = np.array(parsed['task_result']['pred'])
+                result = np.array(parsed['predictions'])
                 logging.info(f'Received results for task {task.name} with shape: {result.shape}')
 
                 await updater.start_work(
