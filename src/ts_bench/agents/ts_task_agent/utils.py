@@ -38,19 +38,6 @@ def _ensure_ndarray(obj):
         raise ValueError(f"Cannot convert object of type {type(obj)} to numpy array")
 
 
-def load_predictions(path: Path) -> np.ndarray:
-    # already checked, may be deleted
-    if path.suffix.lower() != ".npy":
-        raise ValueError(f"Prediction file must be .npy, got {path}")
-
-    arr = np.load(path)
-
-    if arr.dtype != np.float32:
-        raise TypeError(f"Prediction array must be float32, got {arr.dtype}")
-
-    return arr
-
-
 def load_ground_truth(path: Path) -> np.ndarray:
     suffix = path.suffix.lower()
 

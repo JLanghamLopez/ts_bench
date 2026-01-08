@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import uvicorn
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
@@ -29,12 +30,7 @@ from .evaluation import (
     failed_result,
 )
 from .task import AssignmentMessage, create_assignment_message
-from .utils import (
-    check_response,
-    load_ground_truth,
-    load_predictions,
-    validate_inputs,
-)
+from .utils import check_response, load_ground_truth, validate_inputs
 
 logger = logging.getLogger(__name__)
 
@@ -242,7 +238,7 @@ class TSTaskAgent(GreenAgent):
         )
 
         # load the prediction tensor
-        pred_tensor = load_predictions(Path(predictions_path))
+        pred_tensor = np.load(Path(predictions_path))
 
         # load ground truth tensor
         task_dir = self.dataset_root / assignment.task_id
