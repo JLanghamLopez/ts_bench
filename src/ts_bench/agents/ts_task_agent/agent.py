@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import json
 import logging
 from pathlib import Path
 from typing import Optional
@@ -31,7 +32,6 @@ from .evaluation import (
 )
 from .task import AssignmentMessage, create_assignment_message
 from .utils import check_response, load_ground_truth, validate_inputs
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -148,8 +148,10 @@ class TSTaskAgent(GreenAgent):
                     parsed = json.loads(response)
                 except Exception as e:
                     raise ValueError(f"Response is not valid JSON: {response}") from e
-                result = np.array(parsed['predictions'])
-                logging.info(f'Received results for task {task.name} with shape: {result.shape}')
+                result = np.array(parsed["predictions"])
+                logging.info(
+                    f"Received results for task {task.name} with shape: {result.shape}"
+                )
 
                 await updater.start_work(
                     new_agent_text_message(

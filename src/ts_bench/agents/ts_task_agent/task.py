@@ -42,9 +42,8 @@ def create_assignment_message(
         "3. Generate predictions for the test data\n"
         "4. Submit your predictions in the required JSON format\n\n"
         "JSON requirements (STRICT):\n"
-        "- The JSON object must have exactly one key: \"predictions\".\n"
-        "- The value of \"predictions\" must be a nested Python list.\n"
-
+        '- The JSON object must have exactly one key: "predictions".\n'
+        '- The value of "predictions" must be a nested Python list.\n'
     )
 
     message = AssignmentMessage(

@@ -45,8 +45,8 @@ def parse_tasks_from_message(message: Dict) -> List[Dict]:
     tasks = []
     current = {}
 
-    current["task_id"] = message['task_specification']['task_id']
-    current["data_url"] = message['task_specification']['url']
+    current["task_id"] = message["task_specification"]["task_id"]
+    current["data_url"] = message["task_specification"]["url"]
     if current:
         tasks.append(current)
 
@@ -130,14 +130,14 @@ def download_and_parse_kaggle_timeseries_dataset(dataset_url: str) -> dict:
 # Utility: Call OpenAI to generate Python code
 # -----------------------------------------------------------
 async def generate_solver_code(
-    task_id: str, 
-    task_description: str,     
+    task_id: str,
+    task_description: str,
     train_X: str,
     train_Y: str,
     val_X: str,
     val_Y: str,
     test_X: str,
-    ) -> str:
+) -> str:
     """
     Ask OpenAI to write Python code that:
     - trains a model
@@ -236,7 +236,6 @@ class BaselineExecutorExecutor(AgentExecutor):
         # STEP 1 — Parse incoming JSON message from TSTaskAgent
         # --------------------------------------------------
         task_defs = parse_tasks_from_message(json.loads(msg_obj))
-
 
         # --------------------------------------------------
         # STEP 2 — For each task, generate solver code via OpenAI
