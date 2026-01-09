@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Callable, Dict, Optional, Tuple
 
 import numpy as np
-import pandas as pd
 
 from ts_bench.task_bank import TaskType
 
@@ -32,8 +31,6 @@ def _ensure_ndarray(obj):
         if obj.dtype != np.float32:
             return obj.astype(np.float32)
         return obj
-    elif isinstance(obj, pd.DataFrame):
-        return obj.values.astype(np.float32)
     else:
         raise ValueError(f"Cannot convert object of type {type(obj)} to numpy array")
 

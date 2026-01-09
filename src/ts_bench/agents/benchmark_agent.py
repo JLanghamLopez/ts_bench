@@ -76,12 +76,17 @@ def download_and_parse_kaggle_timeseries_dataset(dataset_url: str) -> dict:
     print(f"Downloading dataset from: {dataset_url} to: {zip_path}")
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
     }
     response = requests.get(dataset_url, stream=True, headers=headers, timeout=60)
 
     if response.status_code != 200:
-        raise RuntimeError(f"Failed to download dataset (status {response.status_code}): {response.text}")
+        raise RuntimeError(
+            f"Failed to download dataset (status {response.status_code}): {response.text}"
+        )
 
     with open(zip_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=8192):
@@ -91,6 +96,7 @@ def download_and_parse_kaggle_timeseries_dataset(dataset_url: str) -> dict:
         zf.extractall(tmp_dir)
 
     task_txt_path = os.path.join(tmp_dir, "task.txt")
+
     if not os.path.exists(task_txt_path):
         raise FileNotFoundError("task.txt not found in extracted dataset.")
 
@@ -193,9 +199,8 @@ Output ONLY runnable Python code, nothing else.
 # -----------------------------------------------------------
 # Utility: Execute generated code
 # -----------------------------------------------------------
-async def run_generated_code(code: str, task_id: str):
+async def run_generated_code(tmp_dir: str, code: str, task_id: str) -> str:
     """Execute generated Python code in a temp file."""
-    tmp_dir = tempfile.gettempdir()
     tmp_file = os.path.join(tmp_dir, f"{task_id}_solver.py")
     with open(tmp_file, "w") as f:
         f.write(code)
@@ -208,7 +213,10 @@ async def run_generated_code(code: str, task_id: str):
         logger.error(f"Solver for {task_id} failed:\n{proc.stderr}")
         raise RuntimeError(proc.stderr)
 
-    logger.info(f"Solved task {task_id}. Predictions saved to {tmp_dir}/{task_id}.csv")
+    out_path = f"{tmp_dir}/{task_id}.npy"
+    logger.info(f"Solved task {task_id}. Predictions saved to {out_path}")
+
+    return out_path
 
 
 # -----------------------------------------------------------
@@ -220,6 +228,7 @@ class BaselineExecutorExecutor(AgentExecutor):
 
         logger.info(f"Participant agent received raw user_input object: {msg_obj}")
         msg = context.message
+
         if msg is None:
             raise ServerError(error=InvalidParamsError(message="Missing message."))
 
@@ -236,9 +245,6 @@ class BaselineExecutorExecutor(AgentExecutor):
             ),
         )
 
-        # --------------------------------------------------
-        # STEP 1 — Parse incoming JSON message from TSTaskAgent
-        # --------------------------------------------------
         task_defs = parse_tasks_from_message(json.loads(msg_obj))
 
         # --------------------------------------------------
@@ -269,11 +275,10 @@ class BaselineExecutorExecutor(AgentExecutor):
                 test_X=parsed_data["test_X"],
             )
 
-            tmp_dir = tempfile.gettempdir()
             try:
-                await run_generated_code(solver_code, task_id)
-                # load predictions
-                preds = np.load(f"/tmp/{task_id}.npy")
+                tmp_dir = tempfile.gettempdir()
+                output_path = await run_generated_code(tmp_dir, solver_code, task_id)
+                preds = np.load(output_path)
             except Exception as e:
                 logger.error(f"Error running solver for task {task_id}: {e}")
                 logger.warning("Using dummy predictions instead.")
