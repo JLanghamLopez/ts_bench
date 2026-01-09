@@ -137,10 +137,12 @@ class TSTaskAgent(GreenAgent):
                     url=participant_url,
                     new_conversation=new_conversation,
                 )
+
                 try:
                     parsed = json.loads(response)
                 except Exception as e:
                     raise ValueError(f"Response is not valid JSON: {response}") from e
+
                 result = np.array(parsed["predictions"])
                 logging.info(
                     f"Received results for task {task.name} with shape: {result.shape}"
@@ -148,50 +150,46 @@ class TSTaskAgent(GreenAgent):
 
                 await updater.start_work(
                     new_agent_text_message(
-                        "Received prediction path from participant. Starting evaluation.",
+                        "Received predictions from participant. Starting evaluation.",
                         context_id=updater.context_id,
                     ),
                 )
-                """
-                TODO:
-                - Rewrite the commented sections below and refactor the `evaluate_predictions` function
-                to operate directly on NumPy array {result} rather than file paths.
-                """
-            #     try:
-            #         evaluation_result = await self._evaluate_predictions(
-            #             predictions_path=response,
-            #             assignment=task,
-            #         )
 
-            #     except Exception as e:
-            #         msg = f"Evaluation failed for task number {i}': {e}"
-            #         logger.error(msg, exc_info=True)
-            #         await updater.start_work(
-            #             new_agent_text_message(msg, context_id=updater.context_id),
-            #         )
-            #         evaluation_result = failed_result(response, task)
+                try:
+                    evaluation_result = await self._evaluate_predictions(
+                        predictions=result,
+                        assignment=task,
+                    )
 
-            #     results.append(evaluation_result)
+                except Exception as e:
+                    msg = f"Evaluation failed for task number {i}': {e}"
+                    logger.error(msg, exc_info=True)
+                    await updater.start_work(
+                        new_agent_text_message(msg, context_id=updater.context_id),
+                    )
+                    evaluation_result = failed_result(task)
 
-            #     logger.info(
-            #         "Evaluation complete for task %d: %s\n"
-            #         "Score: %.2f/10\n"
-            #         "Evaluation Summary:\n%s",
-            #         i,
-            #         task.name,
-            #         evaluation_result.score,
-            #         evaluation_result.model_dump_json(indent=2),
-            #     )
+                results.append(evaluation_result)
 
-            #     # Return final evaluation results
-            #     await updater.start_work(
-            #         new_agent_text_message(
-            #             f"Evaluation complete for task {i}: {task.name} "
-            #             f"Score: {evaluation_result.score:.2f}/10\n\n"
-            #             f"Evaluation Summary:\n{evaluation_result.model_dump_json()}",
-            #             context_id=updater.context_id,
-            #         ),
-            #     )
+                logger.info(
+                    "Evaluation complete for task %d: %s\n"
+                    "Score: %.2f/10\n"
+                    "Evaluation Summary:\n%s",
+                    i,
+                    task.name,
+                    evaluation_result.score,
+                    evaluation_result.model_dump_json(indent=2),
+                )
+
+                # Return final evaluation results
+                await updater.start_work(
+                    new_agent_text_message(
+                        f"Evaluation complete for task {i}: {task.name} "
+                        f"Score: {evaluation_result.score:.2f}/10\n\n"
+                        f"Evaluation Summary: \n{evaluation_result.model_dump_json()}",
+                        context_id=updater.context_id,
+                    ),
+                )
 
             except Exception as e:
                 msg = f"Failed to communicate with participant agent or parse response: {e}"
@@ -220,7 +218,7 @@ class TSTaskAgent(GreenAgent):
 
     async def _evaluate_predictions(
         self,
-        predictions_path: str,
+        predictions: np.ndarray,
         assignment: TaskDefinition,
     ) -> Optional[TaskResult]:
         """
@@ -235,14 +233,10 @@ class TSTaskAgent(GreenAgent):
         logger.info("Running evaluation for task_type='%s'.", task_type.value)
 
         logger.info(
-            "Evaluating task_id='%s', difficulty='%s', prediction_path='%s'",
+            "Evaluating task_id='%s', difficulty='%s'",
             assignment.task_id,
             assignment.difficulty.value,
-            predictions_path or "<missing>",
         )
-
-        # load the prediction tensor
-        pred_tensor = np.load(Path(predictions_path))
 
         # load ground truth tensor
         task_dir = self.dataset_root / assignment.task_id
@@ -266,7 +260,7 @@ class TSTaskAgent(GreenAgent):
         gt_tensor = load_ground_truth(gt_path)
 
         # Validate the inputs (predictions and ground truth)
-        valid, err = validate_inputs(task_type, pred_tensor, gt_tensor)
+        valid, err = validate_inputs(task_type, predictions, gt_tensor)
         if not valid:
             raise ValueError(
                 f"Validation failed for task_id={assignment.task_id}: {err}"
@@ -280,7 +274,7 @@ class TSTaskAgent(GreenAgent):
         )
 
         # run the evaluation
-        raw_metrics = eval_fn(pred_tensor, gt_tensor)
+        raw_metrics = eval_fn(predictions, gt_tensor)
 
         # compute average normalized score
         score = _compute_score(raw_metrics)
@@ -292,7 +286,6 @@ class TSTaskAgent(GreenAgent):
             difficulty=assignment.difficulty,
             raw_metrics=raw_metrics,
             score=score,
-            prediction_path=predictions_path,
         )
 
     def validate_request(self, request: EvalRequest) -> tuple[bool, str]:
