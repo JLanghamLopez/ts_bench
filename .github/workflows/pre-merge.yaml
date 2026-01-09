@@ -1,0 +1,20 @@
+name: pre-merge
+run-name: ${{ github.actor }} pre-merge checks
+on: [pull_request]
+jobs:
+  run-pre-commit:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: snok/install-poetry@v1
+        with:
+          version: 2.1.4
+          virtualenvs-create: false
+          installer-parallel: true
+      - run: poetry install
+      - run: pre-commit install
+      - run: pre-commit run --all-files
