@@ -1,43 +1,59 @@
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
 from data.task_bank import TaskDefinition
 
 
-def create_assignment_message(assignment_num: int, assignment: TaskDefinition) -> str:
-    """
-    Create a textual instruction message for the purple agent.
-    This tells them about the tasks and what's expected.
-    """
-    n = assignment_num + 1
-    task_type = assignment.task_type.replace("-", " ").title()
-    msg_lines = [
-        f"# Time Series Benchmark - {task_type} task number {n}",
-        "",
-        "## Instructions",
-        "",
-        "For the task, you will receive a URL to download the task bundle.",
-        "The bundle contains:",
-        "- Training data",
-        "- Validation data",
-        "- Test data",
-        "- Evaluation metrics code",
-        "- Task description and requirements",
-        "",
-        "You are expected to:",
-        "1. Download and analyze each task bundle",
-        "2. Develop, train, and tune your model on the training and validation data",
-        "3. Generate predictions for the test data",
-        "4. Write your predictions to a CSV file, and return a path to the file." "",
-        "## Task Specification",
-        "",
-        f"### Task {n}: {assignment.name}",
-        f"- **Task ID**: {assignment.task_id}",
-        f"- **Type**: {assignment.task_type.value}",
-        f"- **Difficulty**: {assignment.difficulty.value}",
-        f"- **Data URL**: {assignment.url}",
-        "",
-        "## Submission Format",
-        "",
-        "Please return ONLY the path to a csv containing your submission",
-        "",
-    ]
+class SubmissionFormat(BaseModel):
+    file_extension: Literal[".npy"]
+    shape: str = Field(
+        ...,
+        description="Expected tensor shape, e.g. [N, T, D]",
+    )
+    dtype: Literal["float32"]
 
-    return "\n".join(msg_lines)
+
+class AssignmentMessage(BaseModel):
+    instruction: str = Field(
+        ...,
+        description="Human-readable instructions for completing the task",
+        min_length=50,
+    )
+    task_specification: TaskDefinition
+    submission_format: SubmissionFormat
+
+
+def create_assignment_message(
+    assignment_num: int, assignment: TaskDefinition
+) -> AssignmentMessage:
+    n = assignment_num + 1
+
+    instruction_text = (
+        f"This is your assignment {n}. "
+        "You will receive a Kaggle Dataset public URL to download the task bundle. "
+        "The dataset contains the following files:\n"
+        "- dataset.zip: training, validation, and test data\n"
+        "- eval_fn.py: evaluation metrics and scoring code\n"
+        "- task.txt: detailed task description and requirements\n\n"
+        "You are expected to:\n"
+        "1. Download and analyze the task bundle\n"
+        "2. Develop, train, and tune your model using the training and validation data\n"
+        "3. Generate predictions for the test data\n"
+        "4. Save your predictions in the required format and return ONLY the file path\n\n"
+        "Important notes:\n"
+        "- The submission must be a single `.npy` file\n"
+        "- The file must contain exactly one array representing the full prediction tensor\n"
+        "- Do NOT return CSV, TXT, PKL, or any other file format"
+    )
+
+    message = AssignmentMessage(
+        instruction=instruction_text,
+        task_specification=assignment,
+        submission_format=SubmissionFormat(
+            file_extension=".npy",
+            shape="[N, T, D]",
+            dtype="float32",
+        ),
+    )
+    return message

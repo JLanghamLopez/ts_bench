@@ -35,7 +35,7 @@ class TaskDefinition(BaseModel):
 class TaskBank:
     def __init__(
         self,
-        tasks_json_path: str = "../data/tasks.json",
+        tasks_json_path: str = "../data/tasks/tasks.json",
     ):
         # Build task base
         self._tasks_by_id: Dict[str, TaskDefinition] = {}
