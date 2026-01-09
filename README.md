@@ -40,7 +40,7 @@ The green agent (`TSTaskAgent`) roughly follows these steps:
 Dependencies can be installed with [poetry](https://python-poetry.org/) by running
 
 ```commandline
-poetry install
+poetry install --with benchmark
 ```
 
 which will create a virtual environment in the repo at `.venv` which can
@@ -48,6 +48,12 @@ be activated with
 
 ```commandline
 source .venv/bin/activate
+```
+
+On Windows (PowerShell):
+
+```powershell
+.venv\Scripts\Activate.ps1
 ```
 
 ## Running
@@ -62,7 +68,7 @@ python -m ts_bench.run_scenario scenario.toml
 
 ### Code Checks
 
-- Linting/formatting can be using pre-commit
+- Linting/formatting can use pre-commit
   ```commandline
   pre-commit run --all-files
   ```
