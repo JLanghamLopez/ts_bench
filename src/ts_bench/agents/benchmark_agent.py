@@ -246,7 +246,6 @@ class BaselineExecutorExecutor(AgentExecutor):
             data_url = t["data_url"]
             parsed_data = download_and_parse_kaggle_timeseries_dataset(data_url)
             task_description = parsed_data["task_description"]
-            data_root_dir = parsed_data["root_dir"]
             target_shape = parsed_data["target_shape"]
             await updater.update_status(
                 TaskState.working,

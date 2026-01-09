@@ -31,7 +31,7 @@ from .evaluation import (
     failed_result,
 )
 from .task import AssignmentMessage, create_assignment_message
-from .utils import check_response, load_ground_truth, validate_inputs
+from .utils import load_ground_truth, validate_inputs
 
 logger = logging.getLogger(__name__)
 
