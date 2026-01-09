@@ -1,0 +1,62 @@
+Task: Short-Horizon Multivariate Generative Modelling of U.S. Equity Log-Return Trajectories
+
+**1. Task Overview**
+
+This task evaluates a model’s ability to generate realistic short-horizon multivariate log-return trajectories for eight major U.S. equities.
+The goal is to reproduce short-term equity return behaviour under recent market conditions, including volatility patterns and cross-sectional dependence.
+
+Task Type: Generative modelling
+Trajectory Shape: [5, 8] log-return sequences
+
+**2. Task Description**
+
+Participants are required to train a generative model capable of producing realistic 5-day trajectories of daily log-returns for the following equities:
+aapl, amzn, goog, jnj, jpm, meta, msft, nvda.
+
+Each data sample consists of a window of 5 consecutive daily log-returns across these eight equities.
+The trained model should be able to generate new trajectories with the same shape and with statistical and temporal properties comparable to those observed in the real data.
+
+Any generative architecture may be used, including diffusion-based models, GANs, normalizing flows, or other sequence generative approaches, provided that generated outputs match the required [5, 8] format.
+
+**3. Dataset**
+
+The dataset is constructed from daily closing prices of eight large U.S. equities spanning the period 2012-05-18 to 2024-12-30, transformed into log-returns.
+The time series are segmented into overlapping windows using a window length of 5 trading days and a stride of 2 days.
+
+Predefined splits are provided:
+- Train set
+- Validation set
+- Test set
+
+Models should be trained and tuned using the training and validation sets.
+Final evaluation is performed on the held-out test set using the primary metric (HistogramMetric).
+
+**4. Evaluation**
+
+Generated trajectories are evaluated by comparing samples from the model to real test trajectories using the following metrics:
+
+- HistogramMetric
+  Measures similarity between empirical distributions of real and generated log-returns.
+
+- CrossCorrelationMetric
+  Evaluates whether cross-sectional dependence between equities is preserved.
+
+- AutoCorrelationMetric
+  Assesses short-term temporal dependence within individual equity return series.
+
+HistogramMetric is used for final ranking.
+Evaluation code for all metrics will be provided.
+
+**5. Success Criteria**
+
+A strong submission should:
+- Achieve low discrepancy on HistogramMetric on the test set.
+- Preserve cross-equity dependence patterns.
+- Match short-term temporal behaviour observed in the data.
+- Produce stable trajectories without artefacts or mode collapse.
+
+**6. Difficulty Level**
+
+Difficulty: Easy
+
+The short trajectory length and limited temporal horizon make this task suitable as an accessible entry point for multivariate generative modelling of equity returns.

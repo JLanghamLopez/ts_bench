@@ -33,10 +33,7 @@ class TaskDefinition(BaseModel):
 
 
 class TaskBank:
-    def __init__(
-        self,
-        tasks_json_path: str = "../data/tasks.json",
-    ):
+    def __init__(self, tasks_json_path: str):
         # Build task base
         self._tasks_by_id: Dict[str, TaskDefinition] = {}
         self._tasks_by_type: Dict[TaskType, List[TaskDefinition]] = {}
@@ -45,22 +42,26 @@ class TaskBank:
 
     def _load_tasks_from_json(self, tasks_json_path: str):
         path = Path(tasks_json_path)
+
         if not path.exists():
-            logger.error(f"Tasks JSON file not found at {tasks_json_path}")
-            return
+            msg = f"Tasks JSON file not found at {tasks_json_path}"
+            logger.error(msg)
+            raise FileNotFoundError(msg)
 
         try:
             with path.open("r", encoding="utf-8") as f:
                 raw_tasks = json.load(f)
         except json.JSONDecodeError as e:
             logger.error("Failed to parse tasks JSON (%s): %s", tasks_json_path, e)
-            return
+            raise e
 
         if not raw_tasks:
-            logger.info("No tasks found in the JSON file.")
-            return
+            msg = "No tasks found in the JSON file."
+            logger.info(msg)
+            raise ValueError(msg)
 
         loaded = 0
+
         for raw_task in raw_tasks:
             try:
                 task = TaskDefinition(**raw_task)
@@ -160,18 +161,3 @@ class TaskBank:
 
     def all_tasks(self) -> Iterable[TaskDefinition]:
         return self._tasks_by_id.values()
-
-
-if __name__ == "__main__":
-    file_dir = Path(__file__).resolve().parent
-    proj_dir = file_dir.parents[0]
-
-    tasks_json_path = (proj_dir / "data/tasks.json").resolve()
-
-    task_bank = TaskBank(
-        tasks_json_path=str(tasks_json_path),
-    )
-    logger.info("TaskBank initialised with %d tasks.", len(task_bank._tasks_by_id))
-
-    task = task_bank.get_task("equity_forecasting")
-    print("URL:", task_bank.get_url(task.task_id))

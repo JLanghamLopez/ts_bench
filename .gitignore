@@ -118,3 +118,5 @@ pyrightconfig.json
 notebooks/
 *.parquet
 *.csv
+*.pkl
+*.npy

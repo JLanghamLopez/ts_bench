@@ -3,9 +3,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import json
 import logging
 from pathlib import Path
+from typing import Optional
 
+import numpy as np
 import uvicorn
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
@@ -13,16 +16,22 @@ from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import Part, TextPart
 from a2a.utils import new_agent_text_message
 
-from data.task_bank import TaskBank, TaskDefinition, TaskType
 from ts_bench.agents.agent_card import ts_task_agent_card
 from ts_bench.agents.base_agent import GreenAgent
 from ts_bench.executor import TSBenchExecutor
 from ts_bench.experiment_types import EvalRequest
+from ts_bench.task_bank import TaskBank, TaskDefinition, TaskType
 from ts_bench.tool_provider import ToolProvider
 
-from .evaluation import aggregate_scores, evaluate_predictions, failed_result
-from .task import create_assignment_message
-from .utils import check_response
+from .eval_fn_combined import eval_forecasting, eval_generation
+from .evaluation import (
+    TaskResult,
+    _compute_score,
+    aggregate_scores,
+    failed_result,
+)
+from .task import AssignmentMessage, create_assignment_message
+from .utils import load_ground_truth, validate_inputs
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +65,16 @@ class TSTaskAgent(GreenAgent):
         And run the appropriate evaluation script and report scores/feedback.
     """
 
-    def __init__(self, task_bank: TaskBank):
+    def __init__(
+        self,
+        task_bank: TaskBank,
+        dataset_root: Optional[str | Path],
+        test_batch_size: Optional[int] = None,
+    ):
         self.task_bank = task_bank
         self._tool_provider = ToolProvider()
+        self.dataset_root = Path(dataset_root)
+        self.test_batch_size = test_batch_size
 
     async def run_eval(self, request: EvalRequest, updater: TaskUpdater) -> None:
         """
@@ -91,7 +107,7 @@ class TSTaskAgent(GreenAgent):
         # Submit each task in turn
         for i, task in enumerate(assignments):
             # Create instruction message
-            assignment_msg = create_assignment_message(i, task)
+            assignment_msg: AssignmentMessage = create_assignment_message(i, task)
 
             logger.info(
                 f"Assigning task{i}: {task.name} for type={task_type.value}. "
@@ -108,36 +124,41 @@ class TSTaskAgent(GreenAgent):
                 ),
             )
 
-            logger.info("Assignment Message: \n%s", assignment_msg)
+            logger.info(
+                "Assignment Message: \n%s", assignment_msg.model_dump_json(indent=2)
+            )
 
             # Send to purple agent and wait for predictions
             try:
                 participant_url = str(request.participant)
                 new_conversation = i == 0
                 response = await self._tool_provider.talk_to_agent(
-                    message=assignment_msg,
+                    message=assignment_msg.model_dump_json(indent=2),
                     url=participant_url,
                     new_conversation=new_conversation,
                 )
 
-                logger.info("Received response from participant agent: %s", response)
+                try:
+                    parsed = json.loads(response)
+                except Exception as e:
+                    raise ValueError(f"Response is not valid JSON: {response}") from e
 
-                check_response(response)
+                result = np.array(parsed["predictions"])
+                logging.info(
+                    f"Received results for task {task.name} with shape: {result.shape}"
+                )
+
                 await updater.start_work(
                     new_agent_text_message(
-                        "Received prediction path from participant. Starting evaluation.",
+                        "Received predictions from participant. Starting evaluation.",
                         context_id=updater.context_id,
                     ),
                 )
+
                 try:
-                    evaluation_result = await evaluate_predictions(
-                        predictions_path=response,
+                    evaluation_result = await self._evaluate_predictions(
+                        predictions=result,
                         assignment=task,
-                    )
-                    logger.info(
-                        "Evaluation complete for task_type='%s'. Final score: %.2f/10",
-                        task_type.value,
-                        evaluation_result.primary_eval,
                     )
 
                 except Exception as e:
@@ -146,33 +167,126 @@ class TSTaskAgent(GreenAgent):
                     await updater.start_work(
                         new_agent_text_message(msg, context_id=updater.context_id),
                     )
-                    evaluation_result = failed_result(response, task)
+                    evaluation_result = failed_result(task)
 
                 results.append(evaluation_result)
+
+                logger.info(
+                    "Evaluation complete for task %d: %s\n"
+                    "Score: %.2f/10\n"
+                    "Evaluation Summary:\n%s",
+                    i,
+                    task.name,
+                    evaluation_result.score,
+                    evaluation_result.model_dump_json(indent=2),
+                )
 
                 # Return final evaluation results
                 await updater.start_work(
                     new_agent_text_message(
                         f"Evaluation complete for task {i}: {task.name} "
-                        f"Score: {evaluation_result.primary_eval:.2f}/10\n\n"
-                        f"Evaluation Summary:\n{evaluation_result.model_dump_json()}",
+                        f"Score: {evaluation_result.score:.2f}/10\n\n"
+                        f"Evaluation Summary: \n{evaluation_result.model_dump_json()}",
                         context_id=updater.context_id,
                     ),
                 )
 
             except Exception as e:
                 msg = f"Failed to communicate with participant agent or parse response: {e}"
-                logger.error(msg)
-                # TODO: Should we write a better exception here?
-                raise e
+                logger.error(msg, exc_info=True)
+                raise RuntimeError(msg) from e
 
         summary = await aggregate_scores(task_type, results)
+
+        logger.info(
+            "About to add artifact and complete task.\n"
+            "Task type: %s\n"
+            "Number of results: %d\n"
+            "Aggregated Summary:\n%s",
+            task_type.value,
+            len(results),
+            summary.model_dump_json(indent=2),
+        )
 
         await updater.add_artifact(
             parts=[Part(root=TextPart(text=summary.model_dump_json()))],
             name="Result",
         )
         self._tool_provider.reset()
+
+        return
+
+    async def _evaluate_predictions(
+        self,
+        predictions: np.ndarray,
+        assignment: TaskDefinition,
+    ) -> Optional[TaskResult]:
+        """
+        Run the correct_fn evaluation for the given task_type.
+        This is a placeholder that will call the appropriate evaluation function.
+
+        - Load predictions pkl from predictions[task_id]
+        - Call task-specific eval_fn to compute raw_metrics
+        - Compute primary metric normalized score and difficulty-weighted score
+        """
+        task_type = assignment.task_type
+        logger.info("Running evaluation for task_type='%s'.", task_type.value)
+
+        logger.info(
+            "Evaluating task_id='%s', difficulty='%s'",
+            assignment.task_id,
+            assignment.difficulty.value,
+        )
+
+        # load ground truth tensor
+        task_dir = self.dataset_root / assignment.task_id
+
+        if task_type == TaskType.TIME_SERIES_FORECASTING:
+            candidates = ["test_Y.npz", "test_Y.pkl"]
+        else:
+            candidates = ["test.npz", "test.pkl"]
+
+        for name in candidates:
+            candidate = task_dir / name
+            if candidate.exists():
+                gt_path = candidate
+                break
+
+        if not gt_path.exists():
+            raise FileNotFoundError(
+                f"Missing ground-truth file. Tried: {candidates} in {task_dir}"
+            )
+
+        gt_tensor = load_ground_truth(gt_path)
+
+        # Validate the inputs (predictions and ground truth)
+        valid, err = validate_inputs(task_type, predictions, gt_tensor)
+        if not valid:
+            raise ValueError(
+                f"Validation failed for task_id={assignment.task_id}: {err}"
+            )
+
+        # Choose the correct evaluation function based on task type
+        eval_fn = (
+            eval_forecasting
+            if task_type == TaskType.TIME_SERIES_FORECASTING
+            else eval_generation
+        )
+
+        # run the evaluation
+        raw_metrics = eval_fn(predictions, gt_tensor)
+
+        # compute average normalized score
+        score = _compute_score(raw_metrics)
+
+        return TaskResult(
+            task_id=assignment.task_id,
+            name=assignment.name,
+            description=assignment.description,
+            difficulty=assignment.difficulty,
+            raw_metrics=raw_metrics,
+            score=score,
+        )
 
     def validate_request(self, request: EvalRequest) -> tuple[bool, str]:
         """
@@ -212,24 +326,31 @@ async def main():
     parser.add_argument(
         "--card-url", type=str, help="External URL to provide in the agent card"
     )
+    parser.add_argument(
+        "--tasks-path",
+        type=str,
+        default="./data/tasks/tasks.json",
+        help="Path to task description JSON file",
+    )
+    parser.add_argument(
+        "--dataset-path",
+        type=str,
+        default="./data/tasks/",
+        help="Path to ground truth datasets",
+    )
     args = parser.parse_args()
 
     agent_url_cm = contextlib.nullcontext(
         args.card_url or f"http://{args.host}:{args.port}/"
     )
-
-    file_dir = Path(__file__).resolve().parent
-    proj_dir = file_dir.parents[2]
-
-    tasks_json_path = (proj_dir / "../data/tasks.json").resolve()
+    tasks_json_path = args.tasks_path
 
     async with agent_url_cm as agent_url:
-        task_bank = TaskBank(
-            tasks_json_path=str(tasks_json_path),
-        )
+        logger.info(f"Loading tasks from {tasks_json_path}")
+        task_bank = TaskBank(tasks_json_path)
         logger.info("TaskBank initialised with %d tasks.", len(task_bank._tasks_by_id))
-
-        green_agent = TSTaskAgent(task_bank)
+        logger.info(f"Loading data from {args.dataset_path}")
+        green_agent = TSTaskAgent(task_bank, args.dataset_path)
 
         executor = TSBenchExecutor(green_agent)
         agent_card = ts_task_agent_card(url=agent_url)
