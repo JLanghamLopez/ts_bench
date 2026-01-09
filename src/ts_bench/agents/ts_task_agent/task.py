@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from data.task_bank import TaskDefinition
+from ts_bench.task_bank import TaskDefinition
 
 
 class SubmissionFormat(BaseModel):
