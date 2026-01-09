@@ -38,26 +38,15 @@ client = OpenAI()
 # -----------------------------------------------------------
 # Utility: Extract tasks from assignment message
 # -----------------------------------------------------------
-def parse_tasks_from_message(message: str) -> List[Dict]:
+def parse_tasks_from_message(message: Dict) -> List[Dict]:
     """
-    Extract task_id and data_url from the assignment message text.
+    Extract task_id and data_url from the JSON message.
     """
     tasks = []
     current = {}
 
-    for line in message.split("\n"):
-        line = line.strip()
-
-        if line.startswith("- **Task ID**:"):
-            current["task_id"] = line.split(":")[1].strip()
-        elif line.startswith("- **Data URL**:"):
-            current["data_url"] = line.split(": ")[1].strip()
-        elif line.startswith("### Task"):
-            # New task, push previous
-            if current:
-                tasks.append(current)
-            current = {}
-
+    current["task_id"] = message["task_specification"]["task_id"]
+    current["data_url"] = message["task_specification"]["url"]
     if current:
         tasks.append(current)
 
@@ -128,6 +117,11 @@ def download_and_parse_kaggle_timeseries_dataset(dataset_url: str) -> dict:
         "root_dir": tmp_dir,
         "task_description": task_description,
         "eval_fn_path": eval_fn_path,
+        "train_X": os.path.join(data_dir, "train_X.pkl"),
+        "train_Y": os.path.join(data_dir, "train_Y.pkl"),
+        "val_X": os.path.join(data_dir, "val_X.pkl"),
+        "val_Y": os.path.join(data_dir, "val_Y.pkl"),
+        "test_X": os.path.join(data_dir, "test_X.pkl"),
         "target_shape": (bs, t, c),
     }
 
@@ -136,29 +130,36 @@ def download_and_parse_kaggle_timeseries_dataset(dataset_url: str) -> dict:
 # Utility: Call OpenAI to generate Python code
 # -----------------------------------------------------------
 async def generate_solver_code(
-    task_id: str, task_description: str, data_root_dir: str, template_python: str
+    task_id: str,
+    task_description: str,
+    train_X: str,
+    train_Y: str,
+    val_X: str,
+    val_Y: str,
+    test_X: str,
 ) -> str:
     """
     Ask OpenAI to write Python code that:
-    - downloads the dataset
-    - trains a forecasting model
-    - outputs a CSV file of predictions
+    - trains a model
+    - outputs a npy file of predictions
     """
 
     prompt = f"""
 You are a Python time-series ML engineer. You are given a task with the description: {task_description}
-Dataset is already downloaded and available locally at: {data_root_dir}
-Here is a template Python code to help you get started:
-{template_python}
+You are provided with dataset file paths:
+- train_X: {train_X}
+- train_Y: {train_Y}
+- val_X: {val_X}
+- val_Y: {val_Y}
+- test_X: {test_X}
 
 Write Python code that:
 
 1. Loads training/validation sets.
-2. Trains a forecasting model (any reasonable baseline).
+2. Trains a model (any reasonable baseline).
 3. Predicts the test set.
-4. Saves a CSV file containing predictions in this exact path:
-   /tmp/{task_id}.csv
-5. The CSV must contain only one column: 'prediction'
+4. Saves a npy file containing predictions in this exact path:
+   /tmp/{task_id}.npy
 
 ONLY the following libraries are available for import:
 
@@ -218,12 +219,6 @@ class BaselineExecutorExecutor(AgentExecutor):
         if msg is None:
             raise ServerError(error=InvalidParamsError(message="Missing message."))
 
-        # read template code from file
-        template_python = ""
-        template_path = os.path.join(os.path.dirname(__file__), "template.py")
-        with open(template_path, "r") as f:
-            template_python = f.read()
-
         task = new_task(msg)
         await event_queue.enqueue_event(task)
 
@@ -238,20 +233,19 @@ class BaselineExecutorExecutor(AgentExecutor):
         )
 
         # --------------------------------------------------
-        # STEP 1 — Parse incoming message from TSTaskAgent
+        # STEP 1 — Parse incoming JSON message from TSTaskAgent
         # --------------------------------------------------
-        task_defs = parse_tasks_from_message(f"{msg_obj}")
+        task_defs = parse_tasks_from_message(json.loads(msg_obj))
 
         # --------------------------------------------------
         # STEP 2 — For each task, generate solver code via OpenAI
         # --------------------------------------------------
-        prediction_paths = {}
+
         for t in task_defs:
             task_id = t["task_id"]
             data_url = t["data_url"]
             parsed_data = download_and_parse_kaggle_timeseries_dataset(data_url)
             task_description = parsed_data["task_description"]
-            data_root_dir = parsed_data["root_dir"]
             target_shape = parsed_data["target_shape"]
             await updater.update_status(
                 TaskState.working,
@@ -262,25 +256,32 @@ class BaselineExecutorExecutor(AgentExecutor):
             )
 
             solver_code = await generate_solver_code(
-                task_id, task_description, data_root_dir, template_python
+                task_id=task_id,
+                task_description=task_description,
+                train_X=parsed_data["train_X"],
+                train_Y=parsed_data["train_Y"],
+                val_X=parsed_data["val_X"],
+                val_Y=parsed_data["val_Y"],
+                test_X=parsed_data["test_X"],
             )
 
             try:
                 await run_generated_code(solver_code, task_id)
+                # load predictions
+                preds = np.load(f"/tmp/{task_id}.npy")
             except Exception as e:
                 logger.error(f"Error running solver for task {task_id}: {e}")
                 logger.warning("Using dummy predictions instead.")
                 # create dummy predictions
-                dummy_preds = np.zeros(target_shape)
-                df = pd.DataFrame({"prediction": dummy_preds.flatten()})
-                df.to_csv(f"/tmp/{task_id}.csv", index=False)
-            prediction_paths = f"/tmp/{task_id}.csv"
+                preds = np.random.randn(*target_shape)
+
+            pay_load = {"predictions": preds.tolist()}
 
         # --------------------------------------------------
         # STEP 3 — Return JSON mapping
         # --------------------------------------------------
 
-        final_message = json.dumps(prediction_paths)
+        final_message = json.dumps(pay_load)
 
         await updater.update_status(
             TaskState.working,

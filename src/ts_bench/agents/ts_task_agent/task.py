@@ -40,11 +40,10 @@ def create_assignment_message(
         "1. Download and analyze the task bundle\n"
         "2. Develop, train, and tune your model using the training and validation data\n"
         "3. Generate predictions for the test data\n"
-        "4. Save your predictions in the required format and return ONLY the file path\n\n"
-        "Important notes:\n"
-        "- The submission must be a single `.npy` file\n"
-        "- The file must contain exactly one array representing the full prediction tensor\n"
-        "- Do NOT return CSV, TXT, PKL, or any other file format"
+        "4. Submit your predictions in the required JSON format\n\n"
+        "JSON requirements (STRICT):\n"
+        '- The JSON object must have exactly one key: "predictions".\n'
+        '- The value of "predictions" must be a nested Python list.\n'
     )
 
     message = AssignmentMessage(
