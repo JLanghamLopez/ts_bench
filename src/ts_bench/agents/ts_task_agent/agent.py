@@ -15,11 +15,11 @@ from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import Part, TextPart
 from a2a.utils import new_agent_text_message
 
-from data.task_bank import TaskBank, TaskDefinition, TaskType
 from ts_bench.agents.agent_card import ts_task_agent_card
 from ts_bench.agents.base_agent import GreenAgent
 from ts_bench.executor import TSBenchExecutor
 from ts_bench.experiment_types import EvalRequest
+from ts_bench.task_bank import TaskBank, TaskDefinition, TaskType
 from ts_bench.tool_provider import ToolProvider
 
 from .eval_fn_combined import eval_forecasting, eval_generation
@@ -67,19 +67,12 @@ class TSTaskAgent(GreenAgent):
     def __init__(
         self,
         task_bank: TaskBank,
-        dataset_root: Optional[str | Path] = None,
+        dataset_root: Optional[str | Path],
         test_batch_size: Optional[int] = None,
     ):
         self.task_bank = task_bank
         self._tool_provider = ToolProvider()
-
-        if dataset_root is None:
-            file_dir = Path(__file__).resolve().parent
-            proj_dir = file_dir.parents[3]
-            dataset_root = proj_dir / "data/tasks"
-
         self.dataset_root = Path(dataset_root)
-
         self.test_batch_size = test_batch_size
 
     async def run_eval(self, request: EvalRequest, updater: TaskUpdater) -> None:
@@ -329,24 +322,31 @@ async def main():
     parser.add_argument(
         "--card-url", type=str, help="External URL to provide in the agent card"
     )
+    parser.add_argument(
+        "--tasks-path",
+        type=str,
+        default="./data/tasks/tasks.json",
+        help="Path to task description JSON file",
+    )
+    parser.add_argument(
+        "--dataset-path",
+        type=str,
+        default="./data/tasks/",
+        help="Path to ground truth datasets",
+    )
     args = parser.parse_args()
 
     agent_url_cm = contextlib.nullcontext(
         args.card_url or f"http://{args.host}:{args.port}/"
     )
-
-    file_dir = Path(__file__).resolve().parent
-    proj_dir = file_dir.parents[3]
-
-    tasks_json_path = (proj_dir / "data/tasks/tasks.json").resolve()
+    tasks_json_path = args.tasks_path
 
     async with agent_url_cm as agent_url:
-        task_bank = TaskBank(
-            tasks_json_path=str(tasks_json_path),
-        )
+        logger.info(f"Loading tasks from {tasks_json_path}")
+        task_bank = TaskBank(tasks_json_path)
         logger.info("TaskBank initialised with %d tasks.", len(task_bank._tasks_by_id))
-
-        green_agent = TSTaskAgent(task_bank)
+        logger.info(f"Loading data from {args.dataset_path}")
+        green_agent = TSTaskAgent(task_bank, args.dataset_path)
 
         executor = TSBenchExecutor(green_agent)
         agent_card = ts_task_agent_card(url=agent_url)

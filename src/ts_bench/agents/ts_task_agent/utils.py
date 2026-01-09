@@ -6,7 +6,7 @@ from typing import Callable, Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from data.task_bank import TaskType
+from ts_bench.task_bank import TaskType
 
 
 def check_response(response: str) -> None:

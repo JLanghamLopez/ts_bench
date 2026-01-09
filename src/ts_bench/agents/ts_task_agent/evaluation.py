@@ -4,7 +4,7 @@ import logging
 from litellm import acompletion
 from pydantic import BaseModel
 
-from data.task_bank import TaskDefinition, TaskDifficulty, TaskType
+from ts_bench.task_bank import TaskDefinition, TaskDifficulty, TaskType
 
 logger = logging.getLogger(__name__)
 
