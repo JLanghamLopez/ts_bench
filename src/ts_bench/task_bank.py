@@ -30,6 +30,7 @@ class TaskDefinition(BaseModel):
     difficulty: TaskDifficulty
     description: str
     url: str
+    output_shape: list[int]
 
 
 class TaskBank:

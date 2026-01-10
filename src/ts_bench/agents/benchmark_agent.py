@@ -4,14 +4,13 @@ import contextlib
 import json
 import logging
 import os
-import re
 import subprocess
 import tempfile
 import zipfile
-from typing import Dict, List
+from dataclasses import dataclass
+from io import BytesIO
 
 import numpy as np
-import pandas as pd
 import requests
 import uvicorn
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -35,67 +34,58 @@ logging.basicConfig(level=logging.INFO)
 client = OpenAI()
 
 
-# -----------------------------------------------------------
-# Utility: Extract tasks from assignment message
-# -----------------------------------------------------------
-def parse_tasks_from_message(message: Dict) -> List[Dict]:
+@dataclass
+class TaskParams:
+    root_dir: str
+    task_description: str
+    eval_fn_path: str
+    train_x: str
+    train_y: str
+    val_x: str
+    val_y: str
+    test_x: str
+    target_shape: list[int]
+
+
+def download_and_parse_timeseries_dataset(
+    dir_path: str, dataset_url: str, output_shape: list[int]
+) -> TaskParams:
     """
-    Extract task_id and data_url from the JSON message.
-    """
-    tasks = []
-    current = {}
-
-    current["task_id"] = message["task_specification"]["task_id"]
-    current["data_url"] = message["task_specification"]["url"]
-    if current:
-        tasks.append(current)
-
-    return tasks
-
-
-def download_and_parse_kaggle_timeseries_dataset(dataset_url: str) -> dict:
-    """
-    Downloads a Kaggle dataset ZIP file (from a dataset API download URL),
-    extracts it, parses task information, loads PKL data files, and returns
+    Downloads a task dataset ZIP file (from a dataset API download URL),
+    extracts it, parses task information, loads npy data files, and returns
     a structured dictionary.
 
     Expected folder structure inside ZIP:
         task.txt
         eval_function.py
         dataset/
-            train_X.pkl
-            train_Y.pkl
-            val_X.pkl
-            val_Y.pkl
-            test_X.pkl
+            train_X.npy
+            train_Y.npy
+            val_X.npy
+            val_Y.npy
+            test_X.npy
     """
+    logger.info(f"Downloading dataset from: {dataset_url}")
 
-    tmp_dir = tempfile.mkdtemp(prefix="tsbench_")
-    zip_path = os.path.join(tmp_dir, "dataset.zip")
-
-    print(f"Downloading dataset from: {dataset_url} to: {zip_path}")
-
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
-    }
-    response = requests.get(dataset_url, stream=True, headers=headers, timeout=60)
+    # headers = {
+    #     "User-Agent": (
+    #         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    #         "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    #     )
+    # }
+    response = requests.get(dataset_url, timeout=60)
 
     if response.status_code != 200:
         raise RuntimeError(
-            f"Failed to download dataset (status {response.status_code}): {response.text}"
+            (
+                f"Failed to download dataset (status {response.status_code}): "
+                "{response.text}"
+            )
         )
 
-    with open(zip_path, "wb") as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            f.write(chunk)
+    zipfile.ZipFile(BytesIO(response.content)).extractall(dir_path)
 
-    with zipfile.ZipFile(zip_path, "r") as zf:
-        zf.extractall(tmp_dir)
-
-    task_txt_path = os.path.join(tmp_dir, "task.txt")
+    task_txt_path = os.path.join(dir_path, "task.txt")
 
     if not os.path.exists(task_txt_path):
         raise FileNotFoundError("task.txt not found in extracted dataset.")
@@ -103,50 +93,27 @@ def download_and_parse_kaggle_timeseries_dataset(dataset_url: str) -> dict:
     with open(task_txt_path, "r") as f:
         task_description = f.read()
 
-    # get the target shape from the task description
-    match = re.search(r"\[ *(\d+) *, *(\d+) *\]", task_description)
-    if match:
-        t, c = map(int, match.groups())
+    eval_fn_path = os.path.join(dir_path, "eval_fn.py")
 
-    eval_fn_path = os.path.join(tmp_dir, "eval_fn.py")
     if not os.path.exists(eval_fn_path):
         raise FileNotFoundError("eval_fn.py not found in dataset.")
 
-    data_dir = os.path.join(tmp_dir, "dataset")
+    data_dir = os.path.join(dir_path, "dataset")
 
-    def load_pkl(name):
-        path = os.path.join(data_dir, name)
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"{name} missing in dataset/")
-        return pd.read_pickle(path)
-
-    bs = load_pkl("test_X.pkl").shape[0]
-
-    return {
-        "root_dir": tmp_dir,
-        "task_description": task_description,
-        "eval_fn_path": eval_fn_path,
-        "train_X": os.path.join(data_dir, "train_X.pkl"),
-        "train_Y": os.path.join(data_dir, "train_Y.pkl"),
-        "val_X": os.path.join(data_dir, "val_X.pkl"),
-        "val_Y": os.path.join(data_dir, "val_Y.pkl"),
-        "test_X": os.path.join(data_dir, "test_X.pkl"),
-        "target_shape": (bs, t, c),
-    }
+    return TaskParams(
+        root_dir=dir_path,
+        task_description=task_description,
+        eval_fn_path=eval_fn_path,
+        train_x=os.path.join(data_dir, "train_X.npy"),
+        train_y=os.path.join(data_dir, "train_Y.npy"),
+        val_x=os.path.join(data_dir, "val_X.npy"),
+        val_y=os.path.join(data_dir, "val_Y.npy"),
+        test_x=os.path.join(data_dir, "test_X.npy"),
+        target_shape=output_shape,
+    )
 
 
-# -----------------------------------------------------------
-# Utility: Call OpenAI to generate Python code
-# -----------------------------------------------------------
-async def generate_solver_code(
-    task_id: str,
-    task_description: str,
-    train_X: str,
-    train_Y: str,
-    val_X: str,
-    val_Y: str,
-    test_X: str,
-) -> str:
+async def generate_solver_code(task_id: str, task_params: TaskParams) -> str:
     """
     Ask OpenAI to write Python code that:
     - trains a model
@@ -154,13 +121,14 @@ async def generate_solver_code(
     """
 
     prompt = f"""
-You are a Python time-series ML engineer. You are given a task with the description: {task_description}
+You are a Python time-series ML engineer.
+You are given a task with the description: {task_params.task_description}
 You are provided with dataset file paths:
-- train_X: {train_X}
-- train_Y: {train_Y}
-- val_X: {val_X}
-- val_Y: {val_Y}
-- test_X: {test_X}
+- train_X: {task_params.train_x}
+- train_Y: {task_params.train_y}
+- val_X: {task_params.val_x}
+- val_Y: {task_params.val_y}
+- test_X: {task_params.test_x}
 
 Write Python code that:
 
@@ -168,7 +136,7 @@ Write Python code that:
 2. Trains a model (any reasonable baseline).
 3. Predicts the test set.
 4. Saves a npy file containing predictions in this exact path:
-   {tempfile.gettempdir()}/{task_id}.npy
+   {task_params.root_dir}/{task_id}.npy
 
 ONLY the following libraries are available for import:
 
@@ -196,12 +164,10 @@ Output ONLY runnable Python code, nothing else.
     return code
 
 
-# -----------------------------------------------------------
-# Utility: Execute generated code
-# -----------------------------------------------------------
 async def run_generated_code(tmp_dir: str, code: str, task_id: str) -> str:
     """Execute generated Python code in a temp file."""
     tmp_file = os.path.join(tmp_dir, f"{task_id}_solver.py")
+
     with open(tmp_file, "w") as f:
         f.write(code)
 
@@ -210,7 +176,7 @@ async def run_generated_code(tmp_dir: str, code: str, task_id: str) -> str:
     proc = subprocess.run(["python", tmp_file], capture_output=True, text=True)
 
     if proc.returncode != 0:
-        logger.error(f"Solver for {task_id} failed:\n{proc.stderr}")
+        logger.error(f"Solver for {task_id} failed: \n{proc.stderr}")
         raise RuntimeError(proc.stderr)
 
     out_path = f"{tmp_dir}/{task_id}.npy"
@@ -219,14 +185,11 @@ async def run_generated_code(tmp_dir: str, code: str, task_id: str) -> str:
     return out_path
 
 
-# -----------------------------------------------------------
-# Purple Agent Executor
-# -----------------------------------------------------------
 class BaselineExecutorExecutor(AgentExecutor):
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         msg_obj = context.get_user_input()
 
-        logger.info(f"Participant agent received raw user_input object: {msg_obj}")
+        logger.info(f"Participant agent received new task {context.task_id}")
         msg = context.message
 
         if msg is None:
@@ -245,53 +208,40 @@ class BaselineExecutorExecutor(AgentExecutor):
             ),
         )
 
-        task_defs = parse_tasks_from_message(json.loads(msg_obj))
+        msg_obj = json.loads(msg_obj)
+        task_id = msg_obj["task_specification"]["task_id"]
+        data_url = msg_obj["task_specification"]["url"]
+        target_shape = msg_obj["task_specification"]["output_shape"]
 
-        # --------------------------------------------------
-        # STEP 2 — For each task, generate solver code via OpenAI
-        # --------------------------------------------------
+        tmp_dir = tempfile.gettempdir()
 
-        for t in task_defs:
-            task_id = t["task_id"]
-            data_url = t["data_url"]
-            parsed_data = download_and_parse_kaggle_timeseries_dataset(data_url)
-            task_description = parsed_data["task_description"]
-            target_shape = parsed_data["target_shape"]
-            await updater.update_status(
-                TaskState.working,
-                new_agent_text_message(
-                    f"Generating solver for task '{task_id}'...",
-                    context_id=context.context_id,
-                ),
-            )
+        task_params = download_and_parse_timeseries_dataset(
+            tmp_dir, data_url, target_shape
+        )
 
-            solver_code = await generate_solver_code(
-                task_id=task_id,
-                task_description=task_description,
-                train_X=parsed_data["train_X"],
-                train_Y=parsed_data["train_Y"],
-                val_X=parsed_data["val_X"],
-                val_Y=parsed_data["val_Y"],
-                test_X=parsed_data["test_X"],
-            )
+        await updater.update_status(
+            TaskState.working,
+            new_agent_text_message(
+                f"Generating solver for task '{task_id}'...",
+                context_id=context.context_id,
+            ),
+        )
 
-            try:
-                tmp_dir = tempfile.gettempdir()
-                output_path = await run_generated_code(tmp_dir, solver_code, task_id)
-                preds = np.load(output_path)
-            except Exception as e:
-                logger.error(f"Error running solver for task {task_id}: {e}")
-                logger.warning("Using dummy predictions instead.")
-                # create dummy predictions
-                preds = np.random.randn(*target_shape)
+        solver_code = await generate_solver_code(
+            task_id=task_id, task_params=task_params
+        )
 
-            pay_load = {"predictions": preds.tolist()}
+        try:
+            output_path = await run_generated_code(tmp_dir, solver_code, task_id)
+            preds = np.load(output_path)
+        except Exception as e:
+            logger.error(f"Error running solver for task {task_id}: {e}")
+            logger.warning("Using dummy predictions instead.")
+            preds = np.random.randn(*target_shape)
 
-        # --------------------------------------------------
-        # STEP 3 — Return JSON mapping
-        # --------------------------------------------------
+        payload = {"predictions": preds.tolist()}
 
-        final_message = json.dumps(pay_load)
+        final_message = json.dumps(payload)
 
         await updater.update_status(
             TaskState.working,
