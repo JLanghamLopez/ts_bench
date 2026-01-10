@@ -1,17 +1,6 @@
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
 from ts_bench.task_bank import TaskDefinition
-
-
-class SubmissionFormat(BaseModel):
-    file_extension: Literal[".npy"]
-    shape: str = Field(
-        ...,
-        description="Expected tensor shape, e.g. [N, T, D]",
-    )
-    dtype: Literal["float32"]
 
 
 class AssignmentMessage(BaseModel):
@@ -21,7 +10,6 @@ class AssignmentMessage(BaseModel):
         min_length=50,
     )
     task_specification: TaskDefinition
-    submission_format: SubmissionFormat
 
 
 def create_assignment_message(
@@ -30,7 +18,7 @@ def create_assignment_message(
     n = assignment_num + 1
 
     instruction_text = (
-        f"This is your assignment {n}. "
+        f"This is assignment number: {n}."
         "You will receive a Kaggle Dataset public URL to download the task bundle. "
         "The dataset contains the following files:\n"
         "- dataset.zip: training, validation, and test data\n"
@@ -43,16 +31,11 @@ def create_assignment_message(
         "4. Submit your predictions in the required JSON format\n\n"
         "JSON requirements (STRICT):\n"
         '- The JSON object must have exactly one key: "predictions".\n'
-        '- The value of "predictions" must be a nested Python list.\n'
+        '- The value of "predictions" must be an represented by nested Python lists.\n'
     )
 
     message = AssignmentMessage(
         instruction=instruction_text,
         task_specification=assignment,
-        submission_format=SubmissionFormat(
-            file_extension=".npy",
-            shape="[N, T, D]",
-            dtype="float32",
-        ),
     )
     return message
