@@ -15,13 +15,11 @@ class AssignmentMessage(BaseModel):
 def create_assignment_message(
     assignment_num: int, assignment: TaskDefinition
 ) -> AssignmentMessage:
-    n = assignment_num + 1
-
     instruction_text = (
-        f"This is assignment number: {n}."
-        "You will receive a Kaggle Dataset public URL to download the task bundle. "
-        "The dataset contains the following files:\n"
-        "- dataset.zip: training, validation, and test data\n"
+        f"This is assignment number: {assignment_num + 1}."
+        "You will receive a URL to download the task bundle. "
+        "The task bundle contains the following files:\n"
+        "- dataset.zip: training, validation, and test datasets\n"
         "- eval_fn.py: evaluation metrics and scoring code\n"
         "- task.txt: detailed task description and requirements\n\n"
         "You are expected to:\n"
@@ -31,7 +29,7 @@ def create_assignment_message(
         "4. Submit your predictions in the required JSON format\n\n"
         "JSON requirements (STRICT):\n"
         '- The JSON object must have exactly one key: "predictions".\n'
-        '- The value of "predictions" must be an represented by nested Python lists.\n'
+        '- The value of "predictions" must be an array represented by nested Python lists.\n'
     )
 
     message = AssignmentMessage(
