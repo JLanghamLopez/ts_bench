@@ -233,7 +233,7 @@ class BaselineExecutorExecutor(AgentExecutor):
 
         try:
             output_path = await run_generated_code(tmp_dir, solver_code, task_id)
-            preds = np.load(output_path)
+            preds = np.load(output_path, allow_pickle=False)
         except Exception as e:
             logger.error(f"Error running solver for task {task_id}: {e}")
             logger.warning("Using dummy predictions instead.")

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List
 
 from pydantic import BaseModel
 
@@ -33,15 +34,21 @@ class TaskDefinition(BaseModel):
     output_shape: list[int]
 
 
+@dataclass
+class Task:
+    task_definition: TaskDefinition
+    ground_truth_url: str
+
+
 class TaskBank:
     def __init__(self, tasks_json_path: str):
         # Build task base
-        self._tasks_by_id: Dict[str, TaskDefinition] = {}
-        self._tasks_by_type: Dict[TaskType, List[TaskDefinition]] = {}
-
+        self.loaded_tasks = 0
+        self._tasks_by_id: Dict[str, Task] = {}
+        self._tasks_by_type: Dict[TaskType, List[Task]] = {}
         self._load_tasks_from_json(tasks_json_path)
 
-    def _load_tasks_from_json(self, tasks_json_path: str):
+    def _load_tasks_from_json(self, tasks_json_path: str) -> None:
         path = Path(tasks_json_path)
 
         if not path.exists():
@@ -61,31 +68,34 @@ class TaskBank:
             logger.info(msg)
             raise ValueError(msg)
 
-        loaded = 0
-
         for raw_task in raw_tasks:
             try:
-                task = TaskDefinition(**raw_task)
+                keys = TaskDefinition.model_fields
+                task_def = TaskDefinition(**{k: raw_task[k] for k in keys.keys()})
+                ground_truth_url = raw_task["ground_truth_url"]
+                task = Task(task_definition=task_def, ground_truth_url=ground_truth_url)
             except Exception as e:
                 logger.error("Failed to parse task from JSON entry %s: %s", raw_task, e)
                 continue
 
             # store by id
-            if task.task_id in self._tasks_by_id:
+            if task.task_definition.task_id in self._tasks_by_id:
                 logger.warning(
                     "Duplicate task_id '%s' found in JSON. Overwriting previous entry.",
-                    task.task_id,
+                    task.task_definition.task_id,
                 )
 
-            self._tasks_by_id[task.task_id] = task
+            self._tasks_by_id[task.task_definition.task_id] = task
 
             # store by type (Enum key)
-            self._tasks_by_type.setdefault(task.task_type, []).append(task)
-            loaded += 1
+            self._tasks_by_type.setdefault(task.task_definition.task_type, []).append(
+                task
+            )
+            self.loaded_tasks += 1
 
         logger.info(
             "Loaded %d tasks from JSON (%d task types).",
-            loaded,
+            self.loaded_tasks,
             len(self._tasks_by_type),
         )
 
@@ -103,13 +113,7 @@ class TaskBank:
                 f"Must be one of {[t.value for t in TaskType]}"
             ) from e
 
-    def get_task(self, task_id: str) -> Optional[TaskDefinition]:
-        task = self._tasks_by_id.get(task_id)
-        if not task:
-            logger.warning("No task found with task_id='%s'.", task_id)
-        return task
-
-    def get_tasks_by_type(self, task_type: TaskType | str) -> List[TaskDefinition]:
+    def get_tasks_by_type(self, task_type: TaskType | str) -> List[Task]:
         """
         Return all tasks of a given type. Accepts either TaskType Enum or string value.
         """
@@ -126,39 +130,7 @@ class TaskBank:
 
     def get_all_task_ids_by_type(self, task_type: TaskType | str) -> List[str]:
         tasks = self.get_tasks_by_type(task_type)
-        return [task.task_id for task in tasks]
+        return [task.task_definition.task_id for task in tasks]
 
-    def get_single_task_by_type(
-        self,
-        task_type: TaskType | str,
-        index: int = 0,
-    ) -> Optional[TaskDefinition]:
-        """
-        Return a single task for a given type.
-        """
-        tasks = self.get_tasks_by_type(task_type)
-        if not tasks:
-            return None
-
-        if index < 0 or index >= len(tasks):
-            logger.warning(
-                "Index %d out of range for task_type='%s' (num_tasks=%d).",
-                index,
-                self._to_task_type(task_type).value,
-                len(tasks),
-            )
-            return None
-
-        return tasks[index]
-
-    def get_url(self, task_id: str) -> Optional[str]:
-        task = self._tasks_by_id.get(task_id)
-        if not task:
-            logger.warning(
-                "No task found with task_id='%s' when requesting url.", task_id
-            )
-            return None
-        return task.url
-
-    def all_tasks(self) -> Iterable[TaskDefinition]:
+    def all_tasks(self) -> Iterable[Task]:
         return self._tasks_by_id.values()
