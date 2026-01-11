@@ -23,13 +23,12 @@ Any generative architecture may be used, including diffusion-based models, GANs,
 The dataset is constructed from daily closing prices of eight large U.S. equities spanning the period 2012-05-18 to 2024-12-30, transformed into log-returns.
 The time series are segmented into overlapping windows using a window length of 5 trading days and a stride of 2 days.
 
-Predefined splits are provided:
-- Train set
-- Validation set
-- Test set
+The following files are provided to participants:
+- Train set (train.npy)
+- Validation set (val.npy)
 
-Models should be trained and tuned using the training and validation sets.
-Final evaluation is performed on the held-out test set using the primary metric (HistogramMetric).
+Models should be trained and tuned exclusively on the training and validation sets.
+Final evaluation is performed on the held-out test set using all evaluation metrics.
 
 **4. Evaluation**
 
@@ -44,10 +43,11 @@ Generated trajectories are evaluated by comparing samples from the model to real
 - AutoCorrelationMetric
   Assesses short-term temporal dependence within individual equity return series.
 
-HistogramMetric is used for final ranking.
 Evaluation code for all metrics will be provided.
 
-**5. Success Criteria**
+**5. Submission**
+
+Participants must submit a single NumPy file named submission.npy containing floating-point values with shape [159, 5, 8], corresponding to 159 generated multivariate time series samples.
 
 A strong submission should:
 - Achieve low discrepancy on HistogramMetric on the test set.

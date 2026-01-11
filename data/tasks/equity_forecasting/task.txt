@@ -30,15 +30,16 @@ Any forecasting architecture may be used, including transformer-based models, re
 **3. Dataset**
 
 The dataset is constructed from daily closing prices of eight large U.S. equities spanning the period 2012-05-18 to 2024-12-30, transformed into log-returns.
-Data are organised into supervised samples using a 24-day input window and a 5-day forecast horizon.
+The raw equity price data were retrieved from Yahoo Finance using the open-source yfinance Python library.
+Data are organised into supervised learning samples using a 24-day input window and a 5-day forecast horizon.
 
-Predefined splits are provided:
-- Train set
-- Validation set
-- Test set
+The following files are provided to participants:
+- Train set (train_X.npy, train_Y.npy)
+- Validation set (val_X.npy, val_Y.npy)
+- Test set (test_X.npy)
 
-Models should be trained and tuned using the training and validation sets.
-Final evaluation is performed on the held-out test set using the primary metric (RMSE).
+Models should be trained and tuned exclusively on the training and validation sets.
+Final evaluation is performed on the held-out test set (test_Y.npy) using all evaluation metrics.
 
 **4. Evaluation**
 
@@ -53,10 +54,12 @@ Forecast performance is evaluated using the following metrics:
 - MAPE
   Mean absolute percentage error offering a scale-normalised comparison across equities.
 
-RMSE is used for final ranking.
 Evaluation code for all metrics will be provided.
 
-**5. Success Criteria**
+**5. Submission**
+
+Participants must submit a single NumPy file named submission.npy with floating-point values.
+The file must contain model forecasts corresponding to the test inputs and must have the same number of samples and ordering as test_X.npy.
 
 A strong submission should:
 - Achieve low RMSE, MAE, and MAPE on the 5-day forecast horizon.

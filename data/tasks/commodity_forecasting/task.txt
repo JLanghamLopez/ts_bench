@@ -29,16 +29,17 @@ Any forecasting architecture may be used, including transformer-based models, re
 
 **3. Dataset**
 
-The dataset is constructed from daily settlement prices of nine major commodities spanning the period 2007-07-30 to 2025-11-28, transformed into log-returns.
-Data are organised into supervised samples using a 60-day input window and a 5-day forecast horizon.
+The dataset is constructed from daily settlement prices of nine major commodity futures spanning the period 2007-07-30 to 2025-11-28.
+The raw price data were retrieved from Yahoo Finance using the open-source yfinance Python library.
+The original price series were transformed into log-returns and organised into supervised learning samples using a 60-day input window and a 5-day forecast horizon, and subsequently split into training, validation, and test sets.
 
-Predefined splits are provided:
-- Train set
-- Validation set
-- Test set
+The following files are provided to participants:
+- Train set (train_X.npy, train_Y.npy)
+- Validation set (val_X.npy, val_Y.npy)
+- Test set (test_X.npy)
 
-Models should be trained and tuned using the training and validation sets.
-Final evaluation is performed on the held-out test set using the primary metric (RMSE).
+Models should be trained and tuned exclusively on the training and validation sets.
+Final evaluation is performed on the held-out test set (test_Y.npy) using all evaluation metrics.
 
 **4. Evaluation**
 
@@ -53,20 +54,21 @@ Forecast performance is evaluated using the following metrics:
 - MAPE
   Mean absolute percentage error offering a scale-normalised comparison across commodities.
 
-RMSE is used for final ranking.
 Evaluation code for all metrics will be provided.
 
-**5. Success Criteria**
+**5. Submission**
+
+Participants must submit a single NumPy file named submission.npy with floating-point values.
+The file must contain model forecasts corresponding to the test inputs and must have the same number of samples and ordering as test_X.npy.
 
 A strong submission should:
 - Achieve low RMSE, MAE, and MAPE on the 5-day forecast horizon.
 - Produce stable forecasts without systematic drift or excessive noise.
 - Reflect medium-horizon temporal patterns and cross-commodity relationships present in the data.
 
-Final ranking is determined by RMSE performance on the test set.
-
 **6. Difficulty Level**
 
 Difficulty: Advanced
 
 The long conditioning window and medium-horizon forecast horizon require models to capture both temporal structure and cross-commodity dependence across diverse market conditions.
+
