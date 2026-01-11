@@ -1,5 +1,4 @@
 import os
-import pickle
 from pathlib import Path
 from typing import Callable, Dict, Optional, Tuple
 
@@ -38,19 +37,14 @@ def _ensure_ndarray(obj):
 def load_ground_truth(path: Path) -> np.ndarray:
     suffix = path.suffix.lower()
 
-    if suffix == ".pkl":
-        with open(path, "rb") as f:
-            obj = pickle.load(f)
-        return _ensure_ndarray(obj)
-
-    elif suffix == ".npy":
+    if suffix == ".npy":
         arr = np.load(path)
         if arr.dtype != np.float32:
             arr = arr.astype(np.float32, copy=False)
         return arr
 
     else:
-        raise ValueError(f"Unsupported ground-truth file extension: {suffix}")
+        raise ValueError(f"Unsupported ground-truth file extension: {suffix}. Only .npy is supported.")
 
 
 # Input validation

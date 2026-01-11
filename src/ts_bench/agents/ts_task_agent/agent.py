@@ -242,9 +242,9 @@ class TSTaskAgent(GreenAgent):
         task_dir = self.dataset_root / assignment.task_id
 
         if task_type == TaskType.TIME_SERIES_FORECASTING:
-            candidates = ["test_Y.npz", "test_Y.pkl"]
+            candidates = ["test_Y.npy", "test_Y.npz"]
         else:
-            candidates = ["test.npz", "test.pkl"]
+            candidates = ["test.npy", "test.npz"]
 
         for name in candidates:
             candidate = task_dir / name
