@@ -7,6 +7,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Optional
+from urllib.request import urlretrieve
 
 import numpy as np
 import uvicorn
@@ -20,7 +21,7 @@ from ts_bench.agents.agent_card import ts_task_agent_card
 from ts_bench.agents.base_agent import GreenAgent
 from ts_bench.executor import TSBenchExecutor
 from ts_bench.experiment_types import EvalRequest
-from ts_bench.task_bank import TaskBank, TaskDefinition, TaskType
+from ts_bench.task_bank import Task, TaskBank, TaskDefinition, TaskType
 from ts_bench.tool_provider import ToolProvider
 
 from .eval_fn_combined import eval_forecasting, eval_generation
@@ -31,7 +32,7 @@ from .evaluation import (
     failed_result,
 )
 from .task import AssignmentMessage, create_assignment_message
-from .utils import load_ground_truth, validate_inputs
+from .utils import validate_inputs
 
 logger = logging.getLogger(__name__)
 
@@ -100,31 +101,33 @@ class TSTaskAgent(GreenAgent):
             ),
         )
 
-        assignments: list[TaskDefinition] = self.task_bank.get_tasks_by_type(task_type)
+        assignments: list[Task] = self.task_bank.get_tasks_by_type(task_type)
 
         results = []
 
         # Submit each task in turn
         for i, task in enumerate(assignments):
+            task_def = task.task_definition
+
             # Create instruction message
-            assignment_msg: AssignmentMessage = create_assignment_message(i, task)
+            assignment_msg: AssignmentMessage = create_assignment_message(i, task_def)
 
             logger.info(
-                f"Assigning task{i}: {task.name} for type={task_type.value}. "
+                f"Assigning task{i}: {task_def.name} for type={task_type.value}. "
                 f"Sending instructions to participant agent."
             )
 
             await updater.start_work(
                 new_agent_text_message(
                     (
-                        f"Sending task {i}: {task.name} to "
+                        f"Sending task {i}: {task_def.name} to "
                         f"participant agent for type='{task_type.value}'."
                     ),
                     context_id=updater.context_id,
                 ),
             )
 
-            logger.info(
+            logger.debug(
                 "Assignment Message: \n%s", assignment_msg.model_dump_json(indent=2)
             )
 
@@ -145,7 +148,7 @@ class TSTaskAgent(GreenAgent):
 
                 result = np.array(parsed["predictions"])
                 logging.info(
-                    f"Received results for task {task.name} with shape: {result.shape}"
+                    f"Received results for task {task_def.name} with shape: {result.shape}"
                 )
 
                 await updater.start_work(
@@ -158,7 +161,8 @@ class TSTaskAgent(GreenAgent):
                 try:
                     evaluation_result = await self._evaluate_predictions(
                         predictions=result,
-                        assignment=task,
+                        assignment=task_def,
+                        ground_truth_url=task.ground_truth_url,
                     )
 
                 except Exception as e:
@@ -167,7 +171,7 @@ class TSTaskAgent(GreenAgent):
                     await updater.start_work(
                         new_agent_text_message(msg, context_id=updater.context_id),
                     )
-                    evaluation_result = failed_result(task)
+                    evaluation_result = failed_result(task_def)
 
                 results.append(evaluation_result)
 
@@ -176,7 +180,7 @@ class TSTaskAgent(GreenAgent):
                     "Score: %.2f/10\n"
                     "Evaluation Summary:\n%s",
                     i,
-                    task.name,
+                    task_def.name,
                     evaluation_result.score,
                     evaluation_result.model_dump_json(indent=2),
                 )
@@ -184,7 +188,7 @@ class TSTaskAgent(GreenAgent):
                 # Return final evaluation results
                 await updater.start_work(
                     new_agent_text_message(
-                        f"Evaluation complete for task {i}: {task.name} "
+                        f"Evaluation complete for task {i}: {task_def.name} "
                         f"Score: {evaluation_result.score:.2f}/10\n\n"
                         f"Evaluation Summary: \n{evaluation_result.model_dump_json()}",
                         context_id=updater.context_id,
@@ -220,12 +224,11 @@ class TSTaskAgent(GreenAgent):
         self,
         predictions: np.ndarray,
         assignment: TaskDefinition,
+        ground_truth_url: str,
     ) -> Optional[TaskResult]:
         """
         Run the correct_fn evaluation for the given task_type.
-        This is a placeholder that will call the appropriate evaluation function.
 
-        - Load predictions pkl from predictions[task_id]
         - Call task-specific eval_fn to compute raw_metrics
         - Compute primary metric normalized score and difficulty-weighted score
         """
@@ -238,26 +241,8 @@ class TSTaskAgent(GreenAgent):
             assignment.difficulty.value,
         )
 
-        # load ground truth tensor
-        task_dir = self.dataset_root / assignment.task_id
-
-        if task_type == TaskType.TIME_SERIES_FORECASTING:
-            candidates = ["test_Y.npy", "test_Y.npz"]
-        else:
-            candidates = ["test.npy", "test.npz"]
-
-        for name in candidates:
-            candidate = task_dir / name
-            if candidate.exists():
-                gt_path = candidate
-                break
-
-        if not gt_path.exists():
-            raise FileNotFoundError(
-                f"Missing ground-truth file. Tried: {candidates} in {task_dir}"
-            )
-
-        gt_tensor = load_ground_truth(gt_path)
+        path, _ = urlretrieve(ground_truth_url)
+        gt_tensor = np.load(path, allow_pickle=False)
 
         # Validate the inputs (predictions and ground truth)
         valid, err = validate_inputs(task_type, predictions, gt_tensor)
@@ -348,7 +333,7 @@ async def main():
     async with agent_url_cm as agent_url:
         logger.info(f"Loading tasks from {tasks_json_path}")
         task_bank = TaskBank(tasks_json_path)
-        logger.info("TaskBank initialised with %d tasks.", len(task_bank._tasks_by_id))
+        logger.info("TaskBank initialised with %d tasks.", task_bank.loaded_tasks)
         logger.info(f"Loading data from {args.dataset_path}")
         green_agent = TSTaskAgent(task_bank, args.dataset_path)
 
