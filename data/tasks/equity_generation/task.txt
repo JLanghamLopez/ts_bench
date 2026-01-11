@@ -47,7 +47,7 @@ Evaluation code for all metrics will be provided.
 
 **5. Submission**
 
-Participants must submit a single NumPy file named submission.npy containing floating-point values with shape [159, 5, 8], corresponding to 159 generated multivariate time series samples.
+Participants must return 159 generated multivariate time series samples as a JSON-serialized Python object (nested lists) with shape [159, 5, 8].
 
 A strong submission should:
 - Achieve low discrepancy on HistogramMetric on the test set.

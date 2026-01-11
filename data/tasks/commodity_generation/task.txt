@@ -28,7 +28,7 @@ The following files are provided to participants:
 - Validation set (val.npy)
 
 Models should be trained and tuned exclusively on the training and validation sets.
-Final ranking is based solely on performance on the held-out test set (test.npy) using all evaluation metrics.
+Final ranking is based solely on performance on the held-out test set using all evaluation metrics.
 
 **4. Evaluation**
 
@@ -47,7 +47,7 @@ Evaluation metric code for all three metrics will be provided to participants.
 
 **5. Submission**
 
-Participants must submit a single NumPy file named submission.npy containing floating-point values with shape [91, 60, 9], corresponding to 91 generated multivariate time series samples.
+Participants must return 91 generated multivariate time series samples as a JSON-serialized Python object (nested lists) with shape [91, 60, 9].
 
 A successful submission should:
 - Achieve low discrepancy on HistogramMetric on the test set.

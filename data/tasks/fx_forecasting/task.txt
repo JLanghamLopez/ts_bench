@@ -40,7 +40,7 @@ The following files are provided to participants:
 - Test set (test_X.npy)
 
 Models should be trained and tuned exclusively on the training and validation sets.
-Final evaluation is performed on the held-out test set (test_Y.npy) using all evaluation metrics.
+Final evaluation is performed on the held-out test set (test_Y) using all evaluation metrics.
 
 **4. Evaluation**
 
@@ -59,7 +59,7 @@ Evaluation code for all metrics will be provided.
 
 **5. Submission**
 
-Participants must submit a single NumPy file named submission.npy with floating-point values.
+Participants must return its forecasts as a JSON-serialized Python object (nested lists), representing the prediction array.
 The file must contain model forecasts corresponding to the test inputs and must have the same number of samples and ordering as test_X.npy.
 
 A strong submission should:
