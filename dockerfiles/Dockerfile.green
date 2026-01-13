@@ -40,13 +40,14 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy app source code
+# Copy app source code and task data
 COPY ./src/ .
+COPY ./data/tasks.yaml .
 
 # Copy dependencies from builder stage
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-ENTRYPOINT ["python", "-m", "ts_bench.agents.ts_task_agent.agent"]
+ENTRYPOINT ["python", "-m", "ts_bench.agents.ts_task_agent.agent", "--tasks-path", "/app/tasks.yaml"]
 CMD ["--host", "0.0.0.0"]
 EXPOSE 9019
