@@ -5,6 +5,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+
 # ----------------- Time-series-generation evaluation functions -------------------
 def acf_numpy(x: np.ndarray, max_lag: int, dim: Tuple[int, ...] = (0, 1)) -> np.ndarray:
     """

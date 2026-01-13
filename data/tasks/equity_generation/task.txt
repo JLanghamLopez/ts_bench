@@ -2,34 +2,34 @@ Task: Short-Horizon Generative Modelling of U.S. Equity Return–Volatility Dyna
 
 **1. Task Overview**
 
-Financial time series often exhibit non-stationarity, heavy tails, and complex temporal dependence, 
-making realistic data-driven modelling a challenging task. In many practical applications, the availability 
+Financial time series often exhibit non-stationarity, heavy tails, and complex temporal dependence,
+making realistic data-driven modelling a challenging task. In many practical applications, the availability
 of high-quality financial data is limited, which restricts the performance of downstream machine learning models.
 
-Synthetic data generation offers a promising solution by enabling the creation of artificial time series that 
-preserve the statistical characteristics of real data while mitigating data scarcity and privacy concerns. 
+Synthetic data generation offers a promising solution by enabling the creation of artificial time series that
+preserve the statistical characteristics of real data while mitigating data scarcity and privacy concerns.
 This task focuses on the unconditional generation of financial time series under regular market conditions.
-Participants are asked to develop generative models that can produce realistic multivariate financial time series 
+Participants are asked to develop generative models that can produce realistic multivariate financial time series
 reflecting normal market dynamics, without conditioning on explicit regime labels.
 
 **2. Task Description**
 
-In this competition, participants are challenged to construct and train an unconditional generative model capable of 
-simulating synthetic financial time series that closely approximate the distribution of real data observed under 
+In this competition, participants are challenged to construct and train an unconditional generative model capable of
+simulating synthetic financial time series that closely approximate the distribution of real data observed under
 normal market conditions.
 
-Each generated sample should represent the joint evolution of daily returns and volatility for multiple financial assets 
-over a short time horizon. The objective is to reproduce realistic temporal dynamics and cross-asset relationships present 
+Each generated sample should represent the joint evolution of daily returns and volatility for multiple financial assets
+over a short time horizon. The objective is to reproduce realistic temporal dynamics and cross-asset relationships present
 in the training data.
 
-Any generative modelling approach may be used, including GANs, variational autoencoders, diffusion models, or other 
+Any generative modelling approach may be used, including GANs, variational autoencoders, diffusion models, or other
 sequence-based generators, provided that the generated outputs match the required data format.
 
 **3. Dataset**
 
-The dataset consists of historical financial time series representing daily return and volatility dynamics under normal 
-market conditions. All samples corresponding to crisis periods have been removed to focus exclusively on regular market 
-behaviour. The time series represent the joint evolution of five correlated financial assets over a short horizon. 
+The dataset consists of historical financial time series representing daily return and volatility dynamics under normal
+market conditions. All samples corresponding to crisis periods have been removed to focus exclusively on regular market
+behaviour. The time series represent the joint evolution of five correlated financial assets over a short horizon.
 Each sample corresponds to a fixed-length trajectory and is treated as an independent observation drawn from the underlying
 data-generating process.
 

@@ -15,7 +15,6 @@ class AssignmentMessage(BaseModel):
 def create_assignment_message(
     assignment_num: int, assignment: TaskDefinition
 ) -> AssignmentMessage:
-    
     instruction_text: str = (
         f"This is assignment number {assignment_num + 1}.\n\n"
         "You are provided with a task specification that defines the task objective, "
@@ -23,7 +22,6 @@ def create_assignment_message(
         "You are expected to follow the task description carefully and ensure that your submission "
         "strictly conforms to the specified requirements.\n\n"
     )
-
 
     if assignment.task_type == TaskType.TIME_SERIES_FORECASTING:
         instruction_text += (
@@ -41,7 +39,7 @@ def create_assignment_message(
             '- The value of "predictions" must be a nested list representing numerical values.\n'
             "- The shape of the predictions must exactly match the output_shape specified in the task.\n"
         )
- 
+
     else:
         instruction_text += (
             "This is a time-series generation task.\n\n"

@@ -2,34 +2,34 @@ Task: Crypto Market Log-Return Simulation
 
 **1. Task Overview**
 
-This task evaluates a model’s ability to generate multivariate intraday log-return trajectories over a 24-hour horizon 
-for a small set of highly liquid cryptocurrencies. The objective is to model short-horizon return behaviour observed 
-in continuous cryptocurrency markets, including volatility dynamics and cross-asset dependence, under relatively stable 
+This task evaluates a model’s ability to generate multivariate intraday log-return trajectories over a 24-hour horizon
+for a small set of highly liquid cryptocurrencies. The objective is to model short-horizon return behaviour observed
+in continuous cryptocurrency markets, including volatility dynamics and cross-asset dependence, under relatively stable
 macroeconomic conditions.
 
 **2. Task Description**
 
-Participants are required to train a generative model that produces intraday log-return trajectories for three highly 
-traded cryptocurrencies. Each data sample represents one trading day and consists of 24 consecutive hourly log-returns 
+Participants are required to train a generative model that produces intraday log-return trajectories for three highly
+traded cryptocurrencies. Each data sample represents one trading day and consists of 24 consecutive hourly log-returns
 observed simultaneously across the three assets.
 
-The training data are constructed using a rolling window approach applied to historical market data. Each window is 
-treated as an independent sample drawn from an unknown underlying distribution of daily return trajectories. 
-The modelling objective is to learn this distribution and to generate new synthetic samples that are indistinguishable 
+The training data are constructed using a rolling window approach applied to historical market data. Each window is
+treated as an independent sample drawn from an unknown underlying distribution of daily return trajectories.
+The modelling objective is to learn this distribution and to generate new synthetic samples that are indistinguishable
 from real data in terms of their statistical and temporal properties.
 
-Any generative modelling approach may be used, including diffusion-based models, GANs, flow-based models, autoregressive 
-generators, or other sequence-based methods. Regardless of the modelling choice, generated outputs must have the exact 
+Any generative modelling approach may be used, including diffusion-based models, GANs, flow-based models, autoregressive
+generators, or other sequence-based methods. Regardless of the modelling choice, generated outputs must have the exact
 shape [24,3] and reflect realistic intraday behaviour, including variability over time and dependence between assets.
 
 **3. Dataset**
 
-The dataset consists of historical hourly log-return data for three of the most actively traded cryptocurrencies, 
-spanning more than seven years. To reduce the impact of extreme market regimes, periods associated with the COVID-19 
-crisis and large-scale quantitative easing have been excluded. The time series are segmented into overlapping 24-hour 
-samples using a rolling window approach. 
+The dataset consists of historical hourly log-return data for three of the most actively traded cryptocurrencies,
+spanning more than seven years. To reduce the impact of extreme market regimes, periods associated with the COVID-19
+crisis and large-scale quantitative easing have been excluded. The time series are segmented into overlapping 24-hour
+samples using a rolling window approach.
 
-Only the training dataset (train_log_return.npy) will be provided to participants, which has shape (7150, 24, 3). 
+Only the training dataset (train_log_return.npy) will be provided to participants, which has shape (7150, 24, 3).
 Final evaluation is performed on the held-out test set using all evaluation metrics.
 
 **4. Evaluation**
