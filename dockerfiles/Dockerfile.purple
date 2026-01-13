@@ -22,7 +22,7 @@ WORKDIR /app
 COPY pyproject.toml poetry.lock ./
 
 # Install dependencies
-RUN poetry install --no-root --without dev
+RUN poetry install --no-root --without dev --with benchmark
 
 # Stage 2: Runtime environment
 FROM python:3.12.8-slim
