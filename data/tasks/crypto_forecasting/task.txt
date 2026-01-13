@@ -57,7 +57,7 @@ Forecast performance is evaluated using the following metrics:
   Mean absolute error providing a stable magnitude-based measure.
 
 - MAPE
-  Mean absolute percentage error offering a scale-normalised comparison across equities.
+  Mean absolute percentage error offering a scale-normalised comparison.
 
 Evaluation code for all metrics will be provided.
 

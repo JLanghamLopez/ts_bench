@@ -61,10 +61,10 @@ Forecast performance is evaluated using the following metrics:
   Root mean squared error measuring overall forecast accuracy.
 
 - MAE
-  Mean absolute error providing a robust measure under periods of elevated volatility.
+  Mean absolute error providing a stable magnitude-based measure.
 
 - MAPE
-  Mean absolute percentage error offering a scale-normalised comparison across commodities.
+  Mean absolute percentage error offering a scale-normalised comparison.
 
 Evaluation code for all metrics will be provided.
 

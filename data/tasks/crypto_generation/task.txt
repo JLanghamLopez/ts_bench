@@ -37,13 +37,13 @@ Final evaluation is performed on the held-out test set using all evaluation metr
 Generated trajectories are evaluated by comparison with real test trajectories using the following metrics:
 
 - HistogramMetric
-  Measures similarity between empirical distributions of real and generated log-returns.
+  Measures the similarity between real and generated time series by comparing their empirical marginal distributions.
 
 - CrossCorrelationMetric
-  Evaluates whether cross-asset dependence patterns are preserved.
+  Evaluates whether dependence structures across different dimensions of the time series are preserved.
 
 - AutoCorrelationMetric
-  Assesses short-horizon temporal dependence within individual return series.
+  Assesses temporal dependence within individual time series components.
 
 Evaluation code for all metrics will be provided.
 
