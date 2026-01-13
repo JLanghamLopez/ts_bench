@@ -1,0 +1,72 @@
+Task: Crypto Market Intraday Log-Return Forecasting
+
+**1. Task Overview**
+
+Cryptocurrency markets operate continuously without circuit breakers or overnight closures. 
+This 24/7 environment, together with rapidly changing liquidity conditions, leads to pronounced 
+short-horizon volatility and shifting dependence structures across assets. Reliable intraday 
+forecasting is therefore both challenging and practically important for risk monitoring, hedging, 
+and algorithmic decision-making.
+
+This task evaluates a model’s ability to forecast multivariate intraday log-return trajectories 
+for a small set of highly liquid cryptocurrencies. Participants must predict the near-future evolution 
+of hourly log-returns, capturing volatility dynamics and cross-asset relationships under relatively 
+stable macroeconomic conditions.
+
+**2. Task Description**
+
+Participants are required to build and train a forecasting model that predicts the next 4 hourly 
+log-return steps for three major cryptocurrencies, conditioned on the preceding 20 hours of observed 
+log-returns.
+
+Each data sample represents one 24-hour window of hourly log-returns observed simultaneously across 
+the three assets. For forecasting, each 24-hour trajectory is split into an input context window 
+consisting of the first 20 hourly time steps, and a prediction target horizon consisting of the 
+final 4 hourly time steps.
+
+Models should learn short-horizon temporal patterns (e.g., volatility clustering), handle noisy 
+return dynamics, and preserve cross-asset dependence in the forecast horizon. Any forecasting 
+approach may be used, including classical time-series models, machine learning methods, deep 
+learning sequence models, or hybrid approaches, provided that the outputs conform exactly to 
+the required format.
+
+**3. Dataset**
+
+The dataset consists of historical hourly log-return data for three of the most actively traded 
+cryptocurrencies, spanning multiple years. To reduce the impact of extreme market regimes, periods 
+associated with the COVID-19 crisis and large-scale quantitative easing have been excluded. 
+The time series are segmented into overlapping 24-hour samples using a rolling window approach.
+
+For the forecasting task, participants are provided with the following pre-split NumPy datasets:
+Training inputs: train_X.npy, shape [7150, 20, 3]
+Training targets: train_Y.npy, shape [7150, 4, 3]
+Test inputs: test_X.npy, shape [1787, 20, 3]
+
+A held-out test target set (corresponding to the final 4 hours) is used for evaluation and is not 
+provided to participants. Final ranking is based solely on performance on this held-out test set 
+using all evaluation metrics.
+
+**4. Evaluation**
+
+Forecast performance is evaluated using the following metrics:
+
+- RMSE
+  Root mean squared error measuring overall forecast accuracy.
+
+- MAE
+  Mean absolute error providing a stable magnitude-based measure.
+
+- MAPE
+  Mean absolute percentage error offering a scale-normalised comparison across equities.
+
+Evaluation code for all metrics will be provided.
+
+**5. Submission**
+
+Participants must return its forecasts as a JSON-serialized Python object (nested lists), 
+representing the prediction array. The file must contain model forecasts corresponding to 
+the test inputs and must have the shape [1787, 4, 3].
+
+**6. Difficulty Level**
+
+Difficulty: Intermediate

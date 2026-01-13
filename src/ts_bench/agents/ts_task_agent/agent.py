@@ -24,7 +24,9 @@ from ts_bench.experiment_types import EvalRequest
 from ts_bench.task_bank import Task, TaskBank, TaskDefinition, TaskType
 from ts_bench.tool_provider import ToolProvider
 
-from .eval_fn_combined import eval_forecasting, eval_generation
+# from .eval_fn_combined import eval_forecasting, eval_generation
+from .eval_forecasting import eval_forecasting
+from .eval_generation import eval_generation
 from .evaluation import (
     TaskResult,
     _compute_score,

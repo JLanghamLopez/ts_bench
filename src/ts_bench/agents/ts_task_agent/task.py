@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from ts_bench.task_bank import TaskDefinition
+from ts_bench.task_bank import TaskDefinition, TaskType
 
 
 class AssignmentMessage(BaseModel):
@@ -15,22 +15,49 @@ class AssignmentMessage(BaseModel):
 def create_assignment_message(
     assignment_num: int, assignment: TaskDefinition
 ) -> AssignmentMessage:
-    instruction_text = (
-        f"This is assignment number: {assignment_num + 1}."
-        "You will receive a URL to download the task bundle. "
-        "The task bundle contains the following files:\n"
-        "- dataset.zip: training, validation, and test datasets\n"
-        "- eval_fn.py: evaluation metrics and scoring code\n"
-        "- task.txt: detailed task description and requirements\n\n"
-        "You are expected to:\n"
-        "1. Download and analyze the task bundle\n"
-        "2. Develop, train, and tune your model using the training and validation data\n"
-        "3. Generate predictions for the test data\n"
-        "4. Submit your predictions in the required JSON format\n\n"
-        "JSON requirements (STRICT):\n"
-        '- The JSON object must have exactly one key: "predictions".\n'
-        '- The value of "predictions" must be an array represented by nested Python lists.\n'
+    
+    instruction_text: str = (
+        f"This is assignment number {assignment_num + 1}.\n\n"
+        "You are provided with a task specification that defines the task objective, "
+        "the dataset access link, the evaluation function link, and the required output format.\n\n"
+        "You are expected to follow the task description carefully and ensure that your submission "
+        "strictly conforms to the specified requirements.\n\n"
     )
+
+
+    if assignment.task_type == TaskType.TIME_SERIES_FORECASTING:
+        instruction_text += (
+            "This is a time-series forecasting task.\n\n"
+            "You will be provided with:\n"
+            "- A dataset accessible via the data_url field\n"
+            "- An evaluation function accessible via the eval_url field\n\n"
+            "Your objectives are:\n"
+            "1. Download the dataset using the provided data_url\n"
+            "2. Develop, train, and tune a forecasting model using the training data\n"
+            "3. Generate predictions for the required inputs as defined in the task description\n"
+            "4. Submit your predictions in the required JSON format\n\n"
+            "Submission format (STRICT):\n"
+            '- The submission must be a JSON object with exactly one key: "predictions".\n'
+            '- The value of "predictions" must be a nested list representing numerical values.\n'
+            "- The shape of the predictions must exactly match the output_shape specified in the task.\n"
+        )
+ 
+    else:
+        instruction_text += (
+            "This is a time-series generation task.\n\n"
+            "You will be provided with:\n"
+            "- A training dataset accessible via the data_url field\n"
+            "- An evaluation function accessible via the eval_url field\n\n"
+            "Your objectives are:\n"
+            "1. Download the training data using the provided data_url\n"
+            "2. Develop, train, and tune a generative model using the training data\n"
+            "3. Generate synthetic samples according to the task description\n"
+            "4. Submit the generated samples in the required JSON format\n\n"
+            "Submission format (STRICT):\n"
+            '- The submission must be a JSON object with exactly one key: "predictions".\n'
+            '- The value of "predictions" must be a nested list representing numerical values.\n'
+            "- The shape of the generated samples must exactly match the output_shape specified in the task.\n"
+        )
 
     message = AssignmentMessage(
         instruction=instruction_text,

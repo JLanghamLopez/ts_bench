@@ -1,45 +1,52 @@
-Task: Short-Horizon Multivariate Forecasting of U.S. Equity Log-Returns
+Task: Short-Horizon Forecasting of U.S. Equity Return–Volatility Dynamics
 
 **1. Task Overview**
 
-This task evaluates a model’s ability to forecast 5-day multivariate log-return sequences for eight major U.S. equities, using the preceding 24 trading days as input.
-The objective is to model short-horizon equity return dynamics under recent market conditions.
+Financial time series are characterised by non-stationarity, heavy tails, and complex 
+cross-asset interactions. Even under regular market conditions, forecasting short-horizon 
+dynamics of returns and volatility remains challenging due to low signal-to-noise ratios 
+and evolving dependence structures.
 
-Task Type: Forecasting
-Input Shape: [24, 8] log-return sequences
-Target Shape: [5, 8] log-return sequences
+This task focuses on short-horizon forecasting of multivariate financial time series under 
+normal market conditions. Participants are asked to predict the near-future evolution of 
+return and volatility dynamics for multiple correlated U.S. equities, using recent historical 
+observations as input.
 
 **2. Task Description**
 
-Participants are required to build a supervised forecasting model that takes as input 24 consecutive days of log-returns for the following equities:
-aapl, amzn, goog, jnj, jpm, meta, msft, nvda.
+In this competition, participants are challenged to construct a forecasting model that 
+predicts the next trading day’s return–volatility vector given the recent history.
 
-The model must predict the subsequent 5 days of log-returns for the same set of equities.
-Each supervised sample consists of:
-- an input window of shape [24, 8],
-- a target window of shape [5, 8].
+Each sample represents the joint daily return and volatility dynamics of five correlated 
+U.S. equities over a short horizon. For forecasting, each trajectory is split into:
 
-The task focuses on short-horizon forecasting, where models are expected to capture patterns such as:
-- short-term volatility evolution,
-- reactions to corporate earnings or macroeconomic announcements,
-- sector-level spillovers,
-- cross-sectional correlation structure among equities.
+- an input context window consisting of the first 4 daily observations, and
+- a prediction target horizon consisting of the final 1 daily observation.
 
-Any forecasting architecture may be used, including transformer-based models, recurrent networks, temporal convolutional models, or regression-style baselines, provided that outputs conform to the required [5, 8] format.
+Models are expected to learn short-horizon temporal dependencies and cross-equity 
+relationships present in the data. Any forecasting approach may be used, including 
+classical time-series models, machine learning regressors, deep learning sequence models, 
+or hybrid approaches, provided that outputs conform to the required format.
 
 **3. Dataset**
 
-The dataset is constructed from daily closing prices of eight large U.S. equities spanning the period 2012-05-18 to 2024-12-30, transformed into log-returns.
-The raw equity price data were retrieved from Yahoo Finance using the open-source yfinance Python library.
-Data are organised into supervised learning samples using a 24-day input window and a 5-day forecast horizon.
+Participants are provided with preprocessed NumPy arrays corresponding to input–target 
+splits derived from historical financial time series under normal market conditions.
 
-The following files are provided to participants:
-- Train set (train_X.npy, train_Y.npy)
-- Validation set (val_X.npy, val_Y.npy)
-- Test set (test_X.npy)
+Training inputs: train_X.npy
+Shape: [870, 4, 10]
+Represents the first 4 daily observations of each training trajectory.
 
-Models should be trained and tuned exclusively on the training and validation sets.
-Final evaluation is performed on the held-out test set (test_Y) using all evaluation metrics.
+Training targets: train_Y.npy
+Shape: [870, 1, 10]
+Represents the next-day return and volatility values to be forecasted.
+
+Test inputs: test_X.npy
+Shape: [217, 4, 10]
+Represents the first 4 daily observations of each test trajectory.
+
+Each time step contains 10 features corresponding to daily return and volatility measures 
+for five correlated equities. The test targets are held out and used exclusively for evaluation.
 
 **4. Evaluation**
 
@@ -58,16 +65,10 @@ Evaluation code for all metrics will be provided.
 
 **5. Submission**
 
-Participants must return its forecasts as a JSON-serialized Python object (nested lists), representing the prediction array.
-The file must contain model forecasts corresponding to the test inputs and must have the same number of samples and ordering as test_X.npy.
-
-A strong submission should:
-- Achieve low RMSE, MAE, and MAPE on the 5-day forecast horizon.
-- Produce stable predictions without systematic drift or excessive noise.
-- Reflect short-term cross-sectional and temporal relationships present in the data.
+Participants must return its forecasts as a JSON-serialized Python object (nested lists), 
+representing the prediction array. The file must contain model forecasts corresponding to 
+the test inputs and must have the shape of [217, 1, 10].
 
 **6. Difficulty Level**
 
 Difficulty: Easy
-
-The short forecast horizon and moderate input window make this task suitable as an accessible entry point for multivariate equity return forecasting.

@@ -30,7 +30,8 @@ class TaskDefinition(BaseModel):
     task_type: TaskType
     difficulty: TaskDifficulty
     description: str
-    url: str
+    eval_url: str
+    data_url: str
     output_shape: list[int]
 
 

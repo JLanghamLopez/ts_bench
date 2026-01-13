@@ -1,0 +1,88 @@
+Task: Regime-switching Financial Time-Series Forecasting
+
+**1. Task Overview**
+
+The limited availability of financial and economic data is a major bottleneck for the effective 
+application of machine learning methods in finance. Forecasting models trained on financial time 
+series must handle strong non-stationarity, low signal-to-noise ratios, and abrupt structural 
+changes that often reflect regime shifts such as periods of market stress.
+
+Accurate short- to medium-horizon forecasting of multivariate price–volatility dynamics is 
+important for risk management, scenario analysis, and trading. In regime-switching environments, 
+models must remain robust under both stable and elevated-volatility episodes and should preserve 
+cross-asset relationships rather than fitting only marginal trends.
+
+This task focuses on forecasting the near-future evolution of a multivariate financial system by 
+learning from historical trajectories that implicitly contain multiple market regimes.
+
+**2. Task Description**
+
+In this competition, participants are challenged to construct a forecasting model that predicts 
+the next two time steps of a multivariate financial time series given the preceding history.
+
+Each sample trajectory represents the joint evolution of price and volatility processes for two 
+financial instruments over 20 time steps. For the forecasting task, each trajectory is split into:
+
+- an input context window of the first 18 time steps, and
+- a prediction target horizon of the final 2 time steps.
+
+Models are expected to learn medium-horizon temporal structure, handle regime-dependent dynamics 
+(without explicit regime labels), and preserve cross-variable and cross-asset dependence in their 
+forecasts. Any forecasting approach may be used, including classical time-series models, machine 
+learning regressors, deep learning sequence models, or hybrid methods, provided that outputs conform 
+to the required format.
+
+**3. Dataset**
+
+Participants will be provided with pre-split NumPy datasets derived from the original regime-switching 
+trajectories. The original data consist of multivariate sample paths with shape [N, 20, 4], where each 
+trajectory contains 20 time steps, and 4 channels corresponding to price and volatility variables for 
+two financial instruments.
+
+For this forecasting task, the following the data are split into input–target pairs as follows:
+- Training inputs: train_X.npy with shape [20000, 18, 4]
+  The first 18 time steps of each training trajectory.
+
+- Training targets: train_Y.npy with shape [20000, 2, 4]
+  The final 2 time steps to be forecasted.
+
+- Test inputs: test_X.npy with shape [2000, 18, 4]
+  The first 18 time steps of each test trajectory.
+
+A held-out test target set (corresponding to the final 2 time steps) is used for evaluation and is not 
+provided to participants. Final ranking is based solely on performance on this held-out test set using 
+all evaluation metrics.
+
+**4. Evaluation**
+
+Forecast performance is evaluated using the following metrics:
+
+- RMSE
+  Root mean squared error measuring overall forecast accuracy.
+
+- MAE
+  Mean absolute error providing a robust measure under periods of elevated volatility.
+
+- MAPE
+  Mean absolute percentage error offering a scale-normalised comparison across commodities.
+
+Evaluation code for all metrics will be provided.
+
+**5. Submission**
+
+Participants must return its forecasts as a JSON-serialized Python object (nested lists), 
+representing the prediction array. The file must contain model forecasts corresponding to 
+the test inputs and must have the shape [2000, 2, 4].
+
+A strong submission should:
+- Achieve low RMSE, MAE, and MAPE on the 2-day forecast horizon.
+- Produce stable forecasts without systematic drift or excessive noise.
+
+**6. Difficulty Level**
+
+Difficulty: Advanced
+
+Although the forecast horizon is short, the underlying trajectories exhibit regime-switching behaviour 
+and heterogeneous volatility patterns. Successful models must generalise across both stable and stressed 
+regimes and preserve multivariate dependence structures, making the task substantially more challenging 
+than standard stationary forecasting benchmarks.

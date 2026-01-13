@@ -1,33 +1,46 @@
-Task: Short-Horizon Multivariate Generative Modelling of U.S. Equity Log-Return Trajectories
+Task: Short-Horizon Generative Modelling of U.S. Equity Return–Volatility Dynamics
 
 **1. Task Overview**
 
-This task evaluates a model’s ability to generate realistic short-horizon multivariate log-return trajectories for eight major U.S. equities.
-The goal is to reproduce short-term equity return behaviour under recent market conditions, including volatility patterns and cross-sectional dependence.
+Financial time series often exhibit non-stationarity, heavy tails, and complex temporal dependence, 
+making realistic data-driven modelling a challenging task. In many practical applications, the availability 
+of high-quality financial data is limited, which restricts the performance of downstream machine learning models.
 
-Task Type: Generative modelling
-Trajectory Shape: [5, 8] log-return sequences
+Synthetic data generation offers a promising solution by enabling the creation of artificial time series that 
+preserve the statistical characteristics of real data while mitigating data scarcity and privacy concerns. 
+This task focuses on the unconditional generation of financial time series under regular market conditions.
+Participants are asked to develop generative models that can produce realistic multivariate financial time series 
+reflecting normal market dynamics, without conditioning on explicit regime labels.
 
 **2. Task Description**
 
-Participants are required to train a generative model capable of producing realistic 5-day trajectories of daily log-returns for the following equities:
-aapl, amzn, goog, jnj, jpm, meta, msft, nvda.
+In this competition, participants are challenged to construct and train an unconditional generative model capable of 
+simulating synthetic financial time series that closely approximate the distribution of real data observed under 
+normal market conditions.
 
-Each data sample consists of a window of 5 consecutive daily log-returns across these eight equities.
-The trained model should be able to generate new trajectories with the same shape and with statistical and temporal properties comparable to those observed in the real data.
+Each generated sample should represent the joint evolution of daily returns and volatility for multiple financial assets 
+over a short time horizon. The objective is to reproduce realistic temporal dynamics and cross-asset relationships present 
+in the training data.
 
-Any generative architecture may be used, including diffusion-based models, GANs, normalizing flows, or other sequence generative approaches, provided that generated outputs match the required [5, 8] format.
+Any generative modelling approach may be used, including GANs, variational autoencoders, diffusion models, or other 
+sequence-based generators, provided that the generated outputs match the required data format.
 
 **3. Dataset**
 
-The dataset is constructed from daily closing prices of eight large U.S. equities spanning the period 2012-05-18 to 2024-12-30, transformed into log-returns.
-The time series are segmented into overlapping windows using a window length of 5 trading days and a stride of 2 days.
+The dataset consists of historical financial time series representing daily return and volatility dynamics under normal 
+market conditions. All samples corresponding to crisis periods have been removed to focus exclusively on regular market 
+behaviour. The time series represent the joint evolution of five correlated financial assets over a short horizon. 
+Each sample corresponds to a fixed-length trajectory and is treated as an independent observation drawn from the underlying
+data-generating process.
 
-The following files are provided to participants:
-- Train set (train.npy)
-- Validation set (val.npy)
+Only the training dataset will be provided to participants:
+File: train.npy
+Shape: [870, 5, 10]
+Description:
+- 870 sample trajectories
+- 5 time steps per trajectory (daily observations)
+- 10 features per time step, corresponding to return and volatility measures for the 5 assets
 
-Models should be trained and tuned exclusively on the training and validation sets.
 Final evaluation is performed on the held-out test set using all evaluation metrics.
 
 **4. Evaluation**
@@ -47,7 +60,7 @@ Evaluation code for all metrics will be provided.
 
 **5. Submission**
 
-Participants must return 159 generated multivariate time series samples as a JSON-serialized Python object (nested lists) with shape [159, 5, 8].
+Participants must return 217 generated multivariate time series samples as a JSON-serialized Python object (nested lists) with shape [217, 5, 10].
 
 A strong submission should:
 - Achieve low discrepancy on HistogramMetric on the test set.
@@ -58,5 +71,3 @@ A strong submission should:
 **6. Difficulty Level**
 
 Difficulty: Easy
-
-The short trajectory length and limited temporal horizon make this task suitable as an accessible entry point for multivariate generative modelling of equity returns.

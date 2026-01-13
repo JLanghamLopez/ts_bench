@@ -1,36 +1,35 @@
-Task: Multivariate Generative Modelling of 24-Hour Cryptocurrency Log-Return Trajectories
+Task: Crypto Market Log-Return Simulation
 
 **1. Task Overview**
 
-This task evaluates a model’s ability to generate multivariate log-return trajectories over a 24-hour horizon for a set of major cryptocurrencies.
-The aim is to model short-horizon return behaviour observed in continuous cryptocurrency markets, including volatility variation and cross-asset dependence.
-
-Task Type: Generative modelling
-Trajectory Shape: [24, 10] log-return sequences
+This task evaluates a model’s ability to generate multivariate intraday log-return trajectories over a 24-hour horizon 
+for a small set of highly liquid cryptocurrencies. The objective is to model short-horizon return behaviour observed 
+in continuous cryptocurrency markets, including volatility dynamics and cross-asset dependence, under relatively stable 
+macroeconomic conditions.
 
 **2. Task Description**
 
-Participants are required to train a generative model capable of producing 24-step sequences of hourly log-returns for the following cryptoassets:
-ADAUSDT, BNBUSDT, BTCUSDT, DOTUSDT, ETHUSDT, LINKUSDT, LTCUSDT, SOLUSDT, XLMUSDT, XRPUSDT.
+Participants are required to train a generative model that produces intraday log-return trajectories for three highly 
+traded cryptocurrencies. Each data sample represents one trading day and consists of 24 consecutive hourly log-returns 
+observed simultaneously across the three assets.
 
-Each data sample consists of a rolling window of 24 consecutive hourly log-returns across the ten assets.
-After training, the model should be able to generate new trajectories with the same dimensional structure and with statistical and temporal properties comparable to those observed in the data.
+The training data are constructed using a rolling window approach applied to historical market data. Each window is 
+treated as an independent sample drawn from an unknown underlying distribution of daily return trajectories. 
+The modelling objective is to learn this distribution and to generate new synthetic samples that are indistinguishable 
+from real data in terms of their statistical and temporal properties.
 
-Any generative modelling approach may be used, including diffusion-based models, GANs, flow-based models, autoregressive generators, or other sequence-based methods, provided that generated outputs conform to the required [24, 10] format.
+Any generative modelling approach may be used, including diffusion-based models, GANs, flow-based models, autoregressive 
+generators, or other sequence-based methods. Regardless of the modelling choice, generated outputs must have the exact 
+shape [24,3] and reflect realistic intraday behaviour, including variability over time and dependence between assets.
 
 **3. Dataset**
 
-The dataset is derived from hourly cryptocurrency price data spanning the period
-2021-01-01 00:00:00+00:00 to 2024-12-31 23:00:00+00:00, transformed into log-returns.
-The raw price data were retrieved programmatically from the Binance exchange via its public API, using the open-source ccxt Python library.
+The dataset consists of historical hourly log-return data for three of the most actively traded cryptocurrencies, 
+spanning more than seven years. To reduce the impact of extreme market regimes, periods associated with the COVID-19 
+crisis and large-scale quantitative easing have been excluded. The time series are segmented into overlapping 24-hour 
+samples using a rolling window approach. 
 
-The time series are segmented into overlapping windows of length 24 hours using a stride of 4 hours.
-
-The following files are provided to participants:
-- Train set (train.npy)
-- Validation set (val.npy)
-
-Models should be trained and tuned using the training and validation sets.
+Only the training dataset (train_log_return.npy) will be provided to participants, which has shape (7150, 24, 3). 
 Final evaluation is performed on the held-out test set using all evaluation metrics.
 
 **4. Evaluation**
@@ -50,7 +49,7 @@ Evaluation code for all metrics will be provided.
 
 **5. Submission**
 
-Participants must return 876 generated multivariate time series samples as a JSON-serialized Python object (nested lists) with shape [876, 24, 10].
+Participants must return 1787 generated multivariate time series samples as a JSON-serialized Python object (nested lists) with shape [1787, 24, 3].
 
 A strong submission should:
 - Achieve low discrepancy on HistogramMetric on the test set.
@@ -62,4 +61,4 @@ A strong submission should:
 
 Difficulty: Intermediate
 
-The task involves modelling short-horizon multivariate return dynamics under continuous trading conditions with heterogeneous volatility across assets.
+The task focuses on modelling short-horizon multivariate return dynamics for a small number of assets under relatively stable market conditions. While temporal and cross-sectional dependence must be captured, the reduced dimensionality and absence of regime extremes make the problem more accessible than large-scale, high-dimensional financial generative modelling tasks.
