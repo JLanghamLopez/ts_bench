@@ -5,7 +5,6 @@ import asyncio
 import contextlib
 import json
 import logging
-from pathlib import Path
 from typing import Optional
 from urllib.request import urlretrieve
 
@@ -24,7 +23,8 @@ from ts_bench.experiment_types import EvalRequest
 from ts_bench.task_bank import Task, TaskBank, TaskDefinition, TaskType
 from ts_bench.tool_provider import ToolProvider
 
-from .eval_fn_combined import eval_forecasting, eval_generation
+from .eval_forecasting import eval_forecasting
+from .eval_generation import eval_generation
 from .evaluation import (
     TaskResult,
     _compute_score,
@@ -66,16 +66,9 @@ class TSTaskAgent(GreenAgent):
         And run the appropriate evaluation script and report scores/feedback.
     """
 
-    def __init__(
-        self,
-        task_bank: TaskBank,
-        dataset_root: Optional[str | Path],
-        test_batch_size: Optional[int] = None,
-    ):
+    def __init__(self, task_bank: TaskBank):
         self.task_bank = task_bank
         self._tool_provider = ToolProvider()
-        self.dataset_root = Path(dataset_root)
-        self.test_batch_size = test_batch_size
 
     async def run_eval(self, request: EvalRequest, updater: TaskUpdater) -> None:
         """
@@ -113,7 +106,7 @@ class TSTaskAgent(GreenAgent):
             assignment_msg: AssignmentMessage = create_assignment_message(i, task_def)
 
             logger.info(
-                f"Assigning task{i}: {task_def.name} for type={task_type.value}. "
+                f"Assigning task {i}: {task_def.name} for type={task_type.value}. "
                 f"Sending instructions to participant agent."
             )
 
@@ -314,28 +307,21 @@ async def main():
     parser.add_argument(
         "--tasks-path",
         type=str,
-        default="./data/tasks/tasks.json",
-        help="Path to task description JSON file",
-    )
-    parser.add_argument(
-        "--dataset-path",
-        type=str,
-        default="./data/tasks/",
-        help="Path to ground truth datasets",
+        default="./data/tasks.yaml",
+        help="Path to task description YAML file",
     )
     args = parser.parse_args()
 
     agent_url_cm = contextlib.nullcontext(
         args.card_url or f"http://{args.host}:{args.port}/"
     )
-    tasks_json_path = args.tasks_path
+    tasks_yaml_path = args.tasks_path
 
     async with agent_url_cm as agent_url:
-        logger.info(f"Loading tasks from {tasks_json_path}")
-        task_bank = TaskBank(tasks_json_path)
+        logger.info(f"Loading tasks from {tasks_yaml_path}")
+        task_bank = TaskBank(tasks_yaml_path)
         logger.info("TaskBank initialised with %d tasks.", task_bank.loaded_tasks)
-        logger.info(f"Loading data from {args.dataset_path}")
-        green_agent = TSTaskAgent(task_bank, args.dataset_path)
+        green_agent = TSTaskAgent(task_bank)
 
         executor = TSBenchExecutor(green_agent)
         agent_card = ts_task_agent_card(url=agent_url)
