@@ -47,7 +47,6 @@ class EvalSummary(BaseModel):
 
 
 def failed_result(task: TaskDefinition) -> TaskResult:
-    # TODO: Check null results make sense for metrics
     if task.task_type is TaskType.TIME_SERIES_FORECASTING:
         null_metrics = {"rmse": 1000000.0, "mae": 1000000.0, "mape": 10000000.0}
     else:
