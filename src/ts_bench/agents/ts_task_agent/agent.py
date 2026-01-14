@@ -5,6 +5,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 from typing import Optional
 from urllib.request import urlretrieve
 
@@ -15,6 +16,7 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import Part, TextPart
 from a2a.utils import new_agent_text_message
+from dotenv import load_dotenv
 
 from ts_bench.agents.agent_card import ts_task_agent_card
 from ts_bench.agents.base_agent import GreenAgent
@@ -69,6 +71,8 @@ class TSTaskAgent(GreenAgent):
     def __init__(self, task_bank: TaskBank):
         self.task_bank = task_bank
         self._tool_provider = ToolProvider()
+        self.ground_truth_key = os.environ["GROUND_TRUTH_KEY"]
+        self.ground_truth_url = os.environ["GROUND_TRUTH_URL"]
 
     async def run_eval(self, request: EvalRequest, updater: TaskUpdater) -> None:
         """
@@ -76,7 +80,7 @@ class TSTaskAgent(GreenAgent):
         1. Read task_type from request
         2. Fetch all tasks of that type from TaskBank
         3. In turn send each task as a textual instructions to purple agent
-        4. Wait for purple agent to return prediction (path to .csv)
+        4. Wait for purple agent to return predictions as JSON
         5. Run correct_fn.py to evaluate predictions
         6. Return evaluation results
         """
@@ -98,11 +102,9 @@ class TSTaskAgent(GreenAgent):
 
         results = []
 
-        # Submit each task in turn
         for i, task in enumerate(assignments):
             task_def = task.task_definition
 
-            # Create instruction message
             assignment_msg: AssignmentMessage = create_assignment_message(i, task_def)
 
             logger.info(
@@ -139,7 +141,7 @@ class TSTaskAgent(GreenAgent):
                 except Exception as e:
                     raise ValueError(f"Response is not valid JSON: {response}") from e
 
-                result = np.array(parsed["predictions"])
+                result = np.array(parsed["predictions"], dtype=np.float32)
                 logging.info(
                     f"Received results for task {task_def.name} with shape: {result.shape}"
                 )
@@ -152,10 +154,14 @@ class TSTaskAgent(GreenAgent):
                 )
 
                 try:
+                    ground_truth_url = (
+                        f"{self.ground_truth_url}{task.ground_truth_file}"
+                        f"?{self.ground_truth_key}"
+                    )
                     evaluation_result = await self._evaluate_predictions(
                         predictions=result,
                         assignment=task_def,
-                        ground_truth_url=task.ground_truth_url,
+                        ground_truth_url=ground_truth_url,
                     )
 
                 except Exception as e:
@@ -178,7 +184,6 @@ class TSTaskAgent(GreenAgent):
                     evaluation_result.model_dump_json(indent=2),
                 )
 
-                # Return final evaluation results
                 await updater.start_work(
                     new_agent_text_message(
                         f"Evaluation complete for task {i}: {task_def.name} "
@@ -237,14 +242,12 @@ class TSTaskAgent(GreenAgent):
         path, _ = urlretrieve(ground_truth_url)
         gt_tensor = np.load(path, allow_pickle=False)
 
-        # Validate the inputs (predictions and ground truth)
         valid, err = validate_inputs(task_type, predictions, gt_tensor)
         if not valid:
             raise ValueError(
                 f"Validation failed for task_id={assignment.task_id}: {err}"
             )
 
-        # Choose the correct evaluation function based on task type
         eval_fn = (
             eval_forecasting
             if task_type == TaskType.TIME_SERIES_FORECASTING
@@ -342,4 +345,5 @@ async def main():
 
 
 if __name__ == "__main__":
+    load_dotenv()
     asyncio.run(main())

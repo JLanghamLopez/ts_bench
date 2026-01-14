@@ -60,7 +60,7 @@ def print_parts(parts, task_state: str | None = None):
     if data_parts:
         output.extend(json.dumps(item, indent=2) for item in data_parts)
 
-    logger.info("\n".join(output) + "\n")
+    logger.debug("\n".join(output) + "\n")
 
 
 async def event_consumer(event, card: AgentCard) -> None:
