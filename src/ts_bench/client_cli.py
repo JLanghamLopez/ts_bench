@@ -27,13 +27,16 @@ def parse_toml(d: dict[str, object]) -> tuple[EvalRequest, str]:
 
     green_endpoint: str = green["endpoint"]
 
-    purple = d.get("participant")
-    if not isinstance(purple, dict) or "endpoint" not in purple:
-        raise ValueError("participant.endpoint is required in TOML")
+    participants: dict[str, str] = {}
 
-    eval_req = EvalRequest(
-        participant=purple["endpoint"], config=d.get("config", {}) or {}
-    )
+    for p in d.get("participants", []):
+        if isinstance(p, dict):
+            name = p.get("name")
+            endpoint = p.get("endpoint")
+            if name and endpoint:
+                participants[name] = endpoint
+
+    eval_req = EvalRequest(participants=participants, config=d.get("config", {}) or {})
     return eval_req, green_endpoint
 
 

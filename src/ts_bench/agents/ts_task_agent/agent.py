@@ -89,6 +89,7 @@ class TSTaskAgent(GreenAgent):
 
         task_type_str: str = request.config.get("task_type", "")
         task_type = TaskType(task_type_str)
+        participant = list(request.participants.values())[0]
 
         # Fetch tasks and prepare assignment
         await updater.start_work(
@@ -128,7 +129,7 @@ class TSTaskAgent(GreenAgent):
 
             # Send to purple agent and wait for predictions
             try:
-                participant_url = str(request.participant)
+                participant_url = str(participant)
                 new_conversation = i == 0
                 response = await self._tool_provider.talk_to_agent(
                     message=assignment_msg.model_dump_json(indent=2),
@@ -290,6 +291,11 @@ class TSTaskAgent(GreenAgent):
         tasks = self.task_bank.get_tasks_by_type(task_type)
         if not tasks:
             return False, f"No tasks available for task_type='{task_type.value}'."
+
+        participants = request.participants
+
+        if len(participants) > 1:
+            return False, "Scenario should only have a single participant"
 
         return True, "Valid request."
 
