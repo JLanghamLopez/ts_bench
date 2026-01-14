@@ -4,7 +4,7 @@ from pydantic import BaseModel, HttpUrl
 
 
 class EvalRequest(BaseModel):
-    participant: HttpUrl
+    participants: dict[str, HttpUrl]
     config: dict[str, Any]
 
 

@@ -56,9 +56,9 @@ async def wait_for_agents(cfg: dict, timeout: int = 30) -> bool:
     """Wait for all agents to be healthy and responding."""
     endpoints = []
 
-    if cfg["participant"].get("cmd"):
+    if cfg["participants"][0].get("cmd"):
         endpoints.append(
-            f"http://{cfg['participant']['host']}:{cfg['participant']['port']}"
+            f"http://{cfg['participants'][0]['host']}:{cfg['participants'][0]['port']}"
         )
 
     if cfg["green_agent"].get("cmd"):
@@ -126,15 +126,25 @@ def parse_toml(scenario_path: str) -> dict:
     g_host, g_port = host_port(green_ep)
     green_cmd = data.get("green_agent", {}).get("cmd", "")
 
-    part_ep = data.get("participant", {}).get("endpoint", "")
-    part_host, part_port = host_port(part_ep)
-    part_cmd = data.get("participant", {}).get("cmd", "")
+    participants = []
+
+    for p in data.get("participants", []):
+        if isinstance(p, dict) and "endpoint" in p:
+            h, pt = host_port(p["endpoint"])
+            participants.append(
+                {
+                    "name": str(p.get("name", "")),
+                    "host": h,
+                    "port": pt,
+                    "cmd": p.get("cmd", ""),
+                }
+            )
 
     cfg = data.get("config", {})
 
     return {
         "green_agent": {"host": g_host, "port": g_port, "cmd": green_cmd},
-        "participant": {"host": part_host, "port": part_port, "cmd": part_cmd},
+        "participants": participants,
         "config": cfg,
     }
 
@@ -162,12 +172,12 @@ def main():
     procs = []
     try:
         # Start participant agent
-        part_cmd_args = shlex.split(cfg["participant"].get("cmd", ""))
+        part_cmd_args = shlex.split(cfg["participants"][0].get("cmd", ""))
         if part_cmd_args:
             logger.info(
                 (
-                    f"Starting participant agent at {cfg['participant']['host']}"
-                    f":{cfg['participant']['port']}"
+                    f"Starting participant agent at {cfg['participants'][0]['host']}"
+                    f":{cfg['participants'][0]['port']}"
                 )
             )
             procs.append(
