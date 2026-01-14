@@ -94,16 +94,16 @@ async def generate_solver_code(task_id: str, task_params: TaskParams) -> str:
 You are a Python time-series ML engineer.
 You are given a task with the description: {task_params.task_description}
 You are provided with dataset file paths:
-- train_X: {task_params.train_x}
-- train_Y: {task_params.train_y}
-- test_X: {task_params.test_x}
+- `train_X`: {task_params.train_x}
+- `train_Y`: {task_params.train_y}
+- `test_X`: {task_params.test_x}
 
 Write Python code that:
 
 1. Loads training/validation sets.
-2. Trains a model (any reasonable baseline).
-3. Predicts the test set.
-4. Saves a npy file containing predictions in this exact path:
+2. Trains a model (any reasonable baseline) using `train_X` and `train_Y`.
+3. Predicts the test predictions from `test_X`.
+4. Saves the predictions as an npy file in this exact path:
    {task_params.root_dir}/{task_id}.npy
 
 ONLY the following libraries are available for import:
@@ -120,7 +120,7 @@ Output ONLY runnable Python code, nothing else.
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0,
+        temperature=0.1,
     )
 
     code = response.choices[0].message.content

@@ -18,7 +18,7 @@ def create_assignment_message(
     instruction_text: str = (
         f"This is assignment number {assignment_num + 1}.\n\n"
         "You are provided with a task specification that defines the task objective, "
-        "the dataset access link, the evaluation function link, and the required output format.\n\n"
+        "dataset access links, the evaluation function link, and the required output format.\n\n"
         "You are expected to follow the task description carefully and ensure that your submission "
         "strictly conforms to the specified requirements.\n\n"
     )
@@ -27,16 +27,16 @@ def create_assignment_message(
         instruction_text += (
             "This is a time-series forecasting task.\n\n"
             "You will be provided with:\n"
-            "- A dataset accessible via the data_url field\n"
-            "- An evaluation function accessible via the eval_url field\n\n"
+            "- Datasets accessible via the `data_urls` field\n"
+            "- An evaluation function accessible via the `eval_url` field\n\n"
             "Your objectives are:\n"
-            "1. Download the dataset using the provided data_url\n"
+            "1. Download the datasets using the provided `data_url` values\n"
             "2. Develop, train, and tune a forecasting model using the training data\n"
             "3. Generate predictions for the required inputs as defined in the task description\n"
             "4. Submit your predictions in the required JSON format\n\n"
             "Submission format (STRICT):\n"
             '- The submission must be a JSON object with exactly one key: "predictions".\n'
-            '- The value of "predictions" must be a nested list representing numerical values.\n'
+            '- The value of "predictions" must be a nested list of numerical values.\n'
             "- The shape of the predictions must exactly match the output_shape specified in the task.\n"
         )
 
@@ -44,16 +44,16 @@ def create_assignment_message(
         instruction_text += (
             "This is a time-series generation task.\n\n"
             "You will be provided with:\n"
-            "- A training dataset accessible via the data_url field\n"
-            "- An evaluation function accessible via the eval_url field\n\n"
+            "- A training dataset accessible via the `data_urls` field\n"
+            "- An evaluation function accessible via the `eval_url` field\n\n"
             "Your objectives are:\n"
-            "1. Download the training data using the provided data_url\n"
+            "1. Download the training data using the provided `data_urls`\n"
             "2. Develop, train, and tune a generative model using the training data\n"
             "3. Generate synthetic samples according to the task description\n"
             "4. Submit the generated samples in the required JSON format\n\n"
             "Submission format (STRICT):\n"
             '- The submission must be a JSON object with exactly one key: "predictions".\n'
-            '- The value of "predictions" must be a nested list representing numerical values.\n'
+            '- The value of "predictions" must be a nested list of numerical values.\n'
             "- The shape of the generated samples must exactly match the output_shape specified in the task.\n"
         )
 

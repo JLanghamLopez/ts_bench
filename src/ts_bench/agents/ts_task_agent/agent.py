@@ -80,7 +80,7 @@ class TSTaskAgent(GreenAgent):
         1. Read task_type from request
         2. Fetch all tasks of that type from TaskBank
         3. In turn send each task as a textual instructions to purple agent
-        4. Wait for purple agent to return prediction (path to .csv)
+        4. Wait for purple agent to return predictions as JSON
         5. Run correct_fn.py to evaluate predictions
         6. Return evaluation results
         """
@@ -102,11 +102,9 @@ class TSTaskAgent(GreenAgent):
 
         results = []
 
-        # Submit each task in turn
         for i, task in enumerate(assignments):
             task_def = task.task_definition
 
-            # Create instruction message
             assignment_msg: AssignmentMessage = create_assignment_message(i, task_def)
 
             logger.info(
@@ -186,7 +184,6 @@ class TSTaskAgent(GreenAgent):
                     evaluation_result.model_dump_json(indent=2),
                 )
 
-                # Return final evaluation results
                 await updater.start_work(
                     new_agent_text_message(
                         f"Evaluation complete for task {i}: {task_def.name} "
@@ -245,14 +242,12 @@ class TSTaskAgent(GreenAgent):
         path, _ = urlretrieve(ground_truth_url)
         gt_tensor = np.load(path, allow_pickle=False)
 
-        # Validate the inputs (predictions and ground truth)
         valid, err = validate_inputs(task_type, predictions, gt_tensor)
         if not valid:
             raise ValueError(
                 f"Validation failed for task_id={assignment.task_id}: {err}"
             )
 
-        # Choose the correct evaluation function based on task type
         eval_fn = (
             eval_forecasting
             if task_type == TaskType.TIME_SERIES_FORECASTING

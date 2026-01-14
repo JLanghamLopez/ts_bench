@@ -43,7 +43,6 @@ class Task:
 
 class TaskBank:
     def __init__(self, tasks_yaml_path: str):
-        # Build task base
         self.loaded_tasks = 0
         self._tasks_by_id: Dict[str, Task] = {}
         self._tasks_by_type: Dict[TaskType, List[Task]] = {}
