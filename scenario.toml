@@ -8,4 +8,3 @@ cmd = "poetry run python -m ts_bench.agents.benchmark_agent --host 127.0.0.1 --p
 
 [config]
 task_type = "time-series-forecasting"
-num_rounds = 3
