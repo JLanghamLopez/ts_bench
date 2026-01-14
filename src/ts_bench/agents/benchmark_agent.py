@@ -6,12 +6,11 @@ import logging
 import os
 import subprocess
 import tempfile
-import zipfile
 from dataclasses import dataclass
-from io import BytesIO
+from pathlib import Path
+from urllib.request import urlretrieve
 
 import numpy as np
-import requests
 import uvicorn
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
@@ -36,79 +35,50 @@ client = OpenAI()
 
 @dataclass
 class TaskParams:
-    root_dir: str
+    root_dir: str | Path
     task_description: str
     eval_fn_path: str
     train_x: str
     train_y: str
-    val_x: str
-    val_y: str
     test_x: str
     target_shape: list[int]
 
 
 def download_and_parse_timeseries_dataset(
-    dir_path: str, dataset_url: str, output_shape: list[int]
+    dir_path: Path,
+    task_description: str,
+    eval_url: str,
+    dataset_urls: dict[str, str],
+    output_shape: list[int],
 ) -> TaskParams:
-    """
-    Downloads a task dataset ZIP file (from a dataset API download URL),
-    extracts it, parses task information, loads npy data files, and returns
-    a structured dictionary.
-
-    Expected folder structure inside ZIP:
-        task.txt
-        eval_function.py
-        dataset/
-            train_X.npy
-            train_Y.npy
-            val_X.npy
-            val_Y.npy
-            test_X.npy
-    """
-    logger.info(f"Downloading dataset from: {dataset_url}")
-
-    # headers = {
-    #     "User-Agent": (
-    #         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    #         "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    #     )
-    # }
-    response = requests.get(dataset_url, timeout=60)
-
-    if response.status_code != 200:
-        raise RuntimeError(
-            (
-                f"Failed to download dataset (status {response.status_code}): "
-                "{response.text}"
-            )
-        )
-
-    zipfile.ZipFile(BytesIO(response.content)).extractall(dir_path)
-
-    task_txt_path = os.path.join(dir_path, "task.txt")
-
-    if not os.path.exists(task_txt_path):
-        raise FileNotFoundError("task.txt not found in extracted dataset.")
-
-    with open(task_txt_path, "r") as f:
-        task_description = f.read()
-
-    eval_fn_path = os.path.join(dir_path, "eval_fn.py")
-
-    if not os.path.exists(eval_fn_path):
-        raise FileNotFoundError("eval_fn.py not found in dataset.")
-
-    data_dir = os.path.join(dir_path, "dataset")
+    logger.info(f"Downloading train_x dataset from: {dataset_urls['train_x']}")
+    train_x_path, _ = urlretrieve(
+        dataset_urls["train_x"],
+        dir_path / "train_x.npy",
+    )
+    logger.info(f"Downloading train_y dataset from: {dataset_urls['train_y']}")
+    train_y_path, _ = urlretrieve(
+        dataset_urls["train_y"],
+        dir_path / "train_y.npy",
+    )
+    logger.info(f"Downloading test_x dataset from: {dataset_urls['test_x']}")
+    test_x_path, _ = urlretrieve(
+        dataset_urls["test_x"],
+        dir_path / "test_x.npy",
+    )
+    logger.info(f"Retrieving eval functions from {eval_url}")
+    eval_fn_path, _ = urlretrieve(
+        eval_url,
+        dir_path / "eval_fn.py",
+    )
 
     return TaskParams(
         root_dir=dir_path,
         task_description=task_description,
         eval_fn_path=eval_fn_path,
-        train_x=os.path.join(data_dir, "train_X.npy"),
-        train_y=os.path.join(data_dir, "train_Y.npy"),
-        val_x=os.path.join(data_dir, "val_X.npy"),
-        val_y=os.path.join(data_dir, "val_Y.npy"),
-        test_x=os.path.join(data_dir, "test_X.npy"),
+        train_x=train_x_path,
+        train_y=train_y_path,
+        test_x=test_x_path,
         target_shape=output_shape,
     )
 
@@ -126,8 +96,6 @@ You are given a task with the description: {task_params.task_description}
 You are provided with dataset file paths:
 - train_X: {task_params.train_x}
 - train_Y: {task_params.train_y}
-- val_X: {task_params.val_x}
-- val_Y: {task_params.val_y}
 - test_X: {task_params.test_x}
 
 Write Python code that:
@@ -210,13 +178,14 @@ class BaselineExecutorExecutor(AgentExecutor):
 
         msg_obj = json.loads(msg_obj)
         task_id = msg_obj["task_specification"]["task_id"]
-        data_url = msg_obj["task_specification"]["url"]
-        target_shape = msg_obj["task_specification"]["output_shape"]
-
         tmp_dir = tempfile.gettempdir()
 
         task_params = download_and_parse_timeseries_dataset(
-            tmp_dir, data_url, target_shape
+            Path(tmp_dir),
+            msg_obj["task_specification"]["description"],
+            msg_obj["task_specification"]["eval_url"],
+            msg_obj["task_specification"]["data_urls"],
+            msg_obj["task_specification"]["output_shape"],
         )
 
         await updater.update_status(
@@ -234,10 +203,17 @@ class BaselineExecutorExecutor(AgentExecutor):
         try:
             output_path = await run_generated_code(tmp_dir, solver_code, task_id)
             preds = np.load(output_path, allow_pickle=False)
+            assert isinstance(preds, np.ndarray)
+            logger.info(
+                (
+                    f"Agent generated predictions with shape {preds.shape} "
+                    f"and type {preds.dtype}"
+                )
+            )
         except Exception as e:
             logger.error(f"Error running solver for task {task_id}: {e}")
             logger.warning("Using dummy predictions instead.")
-            preds = np.random.randn(*target_shape)
+            preds = np.random.randn(*msg_obj["task_specification"]["output_shape"])
 
         payload = {"predictions": preds.tolist()}
 

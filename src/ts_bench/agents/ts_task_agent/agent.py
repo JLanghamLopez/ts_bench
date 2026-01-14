@@ -5,6 +5,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 from typing import Optional
 from urllib.request import urlretrieve
 
@@ -15,6 +16,7 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import Part, TextPart
 from a2a.utils import new_agent_text_message
+from dotenv import load_dotenv
 
 from ts_bench.agents.agent_card import ts_task_agent_card
 from ts_bench.agents.base_agent import GreenAgent
@@ -69,6 +71,8 @@ class TSTaskAgent(GreenAgent):
     def __init__(self, task_bank: TaskBank):
         self.task_bank = task_bank
         self._tool_provider = ToolProvider()
+        self.ground_truth_key = os.environ["GROUND_TRUTH_KEY"]
+        self.ground_truth_url = os.environ["GROUND_TRUTH_URL"]
 
     async def run_eval(self, request: EvalRequest, updater: TaskUpdater) -> None:
         """
@@ -139,7 +143,7 @@ class TSTaskAgent(GreenAgent):
                 except Exception as e:
                     raise ValueError(f"Response is not valid JSON: {response}") from e
 
-                result = np.array(parsed["predictions"])
+                result = np.array(parsed["predictions"], dtype=np.float32)
                 logging.info(
                     f"Received results for task {task_def.name} with shape: {result.shape}"
                 )
@@ -152,10 +156,14 @@ class TSTaskAgent(GreenAgent):
                 )
 
                 try:
+                    ground_truth_url = (
+                        f"{self.ground_truth_url}{task.ground_truth_file}"
+                        f"?{self.ground_truth_key}"
+                    )
                     evaluation_result = await self._evaluate_predictions(
                         predictions=result,
                         assignment=task_def,
-                        ground_truth_url=task.ground_truth_url,
+                        ground_truth_url=ground_truth_url,
                     )
 
                 except Exception as e:
@@ -342,4 +350,5 @@ async def main():
 
 
 if __name__ == "__main__":
+    load_dotenv()
     asyncio.run(main())
