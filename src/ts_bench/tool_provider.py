@@ -10,12 +10,13 @@ class ToolProvider:
         self, message: str, url: str, new_conversation: bool = False
     ):
         """
-        Communicate with another agent by sending a message and receiving their response.
+        Communicate with another agent by sending a message and receiving their response
 
         Args:
             message: The message to send to the agent
             url: The agent's URL endpoint
-            new_conversation: If True, start fresh conversation; if False, continue existing conversation
+            new_conversation: If True, start fresh conversation; if False,
+              continue existing conversation
 
         Returns:
             str: The agent's response message

@@ -31,19 +31,18 @@ class TaskDefinition(BaseModel):
     difficulty: TaskDifficulty
     description: str
     eval_url: str
-    data_url: str
+    data_urls: dict[str, str]
     output_shape: list[int]
 
 
 @dataclass
 class Task:
     task_definition: TaskDefinition
-    ground_truth_url: str
+    ground_truth_file: str
 
 
 class TaskBank:
     def __init__(self, tasks_yaml_path: str):
-        # Build task base
         self.loaded_tasks = 0
         self._tasks_by_id: Dict[str, Task] = {}
         self._tasks_by_type: Dict[TaskType, List[Task]] = {}
@@ -73,8 +72,10 @@ class TaskBank:
             try:
                 keys = TaskDefinition.model_fields
                 task_def = TaskDefinition(**{k: raw_task[k] for k in keys.keys()})
-                ground_truth_url = raw_task["ground_truth_url"]
-                task = Task(task_definition=task_def, ground_truth_url=ground_truth_url)
+                ground_truth_file = raw_task["ground_truth_file"]
+                task = Task(
+                    task_definition=task_def, ground_truth_file=ground_truth_file
+                )
             except Exception as e:
                 logger.error("Failed to parse task from YAML entry %s: %s", raw_task, e)
                 continue

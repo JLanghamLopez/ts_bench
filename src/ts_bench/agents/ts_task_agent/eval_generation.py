@@ -6,10 +6,9 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-# ----------------- Time-series-generation evaluation functions -------------------
 def acf_numpy(x: np.ndarray, max_lag: int, dim: Tuple[int, ...] = (0, 1)) -> np.ndarray:
     """
-    Computes (possibly multivariate) autocorrelation function along time dimension.
+    Computes (possibly multivariate) autocorrelation function along the time dimension.
 
     Args:
         x: Array of shape [B, S, D].
@@ -242,7 +241,7 @@ def _corrcoef_from_batch(x: np.ndarray, eps: float = 1e-8) -> np.ndarray:
     return corr
 
 
-class cross_correlation(Loss):
+class CrossCorrelation(Loss):
     def __init__(self, x_real: np.ndarray, **kwargs):
         super().__init__(**kwargs)
         self.x_real = x_real
@@ -574,7 +573,7 @@ def eval_generation(
     acf_value = acf_loss_module(x_fake)
 
     # Cross-correlation loss (uses Loss.forward -> mean over matrix)
-    cc_module = cross_correlation(
+    cc_module = CrossCorrelation(
         x_real=x_real,
         name="crosscorr",
         reg=1.0,

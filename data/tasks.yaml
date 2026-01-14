@@ -71,10 +71,13 @@
     **6. Difficulty Level**
 
     Difficulty: Intermediate
-  data_url: some_url
-  eval_url: https://raw.githubusercontent.com/JLanghamLopez/ts_bench/task_description/src/ts_bench/agents/ts_task_agent/eval_forecasting.py
+  data_urls:
+    train_x: https://tsbench.blob.core.windows.net/ts-bench-data/crypto_forecasting/train_X.npy
+    train_y: https://tsbench.blob.core.windows.net/ts-bench-data/crypto_forecasting/train_Y.npy
+    test_x: https://tsbench.blob.core.windows.net/ts-bench-data/crypto_forecasting/test_X.npy
+  eval_url: https://github.com/JLanghamLopez/ts_bench/blob/main/src/ts_bench/agents/ts_task_agent/eval_forecasting.py?raw=true
   output_shape: [1787, 4, 3]
-  ground_truth_url: some_url
+  ground_truth_file: crypto_forecasting.npy
 -
   task_id: equity_forecasting
   name: Short-Horizon Forecasting of U.S. Equity Return–Volatility Dynamics
@@ -150,10 +153,13 @@
     **6. Difficulty Level**
 
     Difficulty: Easy
-  data_url: some_url
-  eval_url: https://raw.githubusercontent.com/JLanghamLopez/ts_bench/task_description/src/ts_bench/agents/ts_task_agent/eval_forecasting.py
+  data_urls:
+    train_x: https://tsbench.blob.core.windows.net/ts-bench-data/equity_forecasting/train_X.npy
+    train_y: https://tsbench.blob.core.windows.net/ts-bench-data/equity_forecasting/train_Y.npy
+    test_x: https://tsbench.blob.core.windows.net/ts-bench-data/equity_forecasting/test_X.npy
+  eval_url: https://github.com/JLanghamLopez/ts_bench/blob/main/src/ts_bench/agents/ts_task_agent/eval_forecasting.py?raw=true
   output_shape: [217, 1, 10]
-  ground_truth_url: some_url
+  ground_truth_file: equity_forecasting.npy
 -
   task_id: regime_switching_forecasting
   name: Regime-switching Financial Time-Series Forecasting
@@ -242,10 +248,13 @@
     and heterogeneous volatility patterns. Successful models must generalise across both stable and stressed
     regimes and preserve multivariate dependence structures, making the task substantially more challenging
     than standard stationary forecasting benchmarks.
-  data_url: some_url
-  eval_url: https://raw.githubusercontent.com/JLanghamLopez/ts_bench/task_description/src/ts_bench/agents/ts_task_agent/eval_forecasting.py
+  data_urls:
+    train_x: https://tsbench.blob.core.windows.net/ts-bench-data/regime_switching_forecasting/train_X.npy
+    train_y: https://tsbench.blob.core.windows.net/ts-bench-data/regime_switching_forecasting/train_Y.npy
+    test_x: https://tsbench.blob.core.windows.net/ts-bench-data/regime_switching_forecasting/test_X.npy
+  eval_url: https://github.com/JLanghamLopez/ts_bench/blob/main/src/ts_bench/agents/ts_task_agent/eval_forecasting.py?raw=true
   output_shape: [2000, 2, 4]
-  ground_truth_url: some_url
+  ground_truth_file: regime_switching_forecasting.npy
 -
   task_id: crypto_generation
   name: Crypto Market Log-Return Simulation
@@ -314,10 +323,11 @@
     relatively stable market conditions. While temporal and cross-sectional dependence must be captured, the
     reduced dimensionality and absence of regime extremes make the problem more accessible than large-scale,
     high-dimensional financial generative modelling tasks.
-  data_url: some_url
-  eval_url: https://raw.githubusercontent.com/JLanghamLopez/ts_bench/task_description/src/ts_bench/agents/ts_task_agent/eval_generation.py
+  data_urls:
+    train: https://tsbench.blob.core.windows.net/ts-bench-data/crypto_generation/train.npy
+  eval_url: https://github.com/JLanghamLopez/ts_bench/blob/main/src/ts_bench/agents/ts_task_agent/eval_generation.py?raw=true
   output_shape: [1787, 24, 3]
-  ground_truth_url: some_url
+  ground_truth_file: crypto_generation.npy
 -
   task_id: equity_generation
   name: Short-Horizon Generative Modelling of U.S. Equity Return–Volatility Dynamics
@@ -391,10 +401,11 @@
     **6. Difficulty Level**
 
     Difficulty: Easy
-  data_url: some_url
-  eval_url: https://raw.githubusercontent.com/JLanghamLopez/ts_bench/task_description/src/ts_bench/agents/ts_task_agent/eval_generation.py
+  data_urls:
+    train: https://tsbench.blob.core.windows.net/ts-bench-data/equity_generation/train.npy
+  eval_url: https://github.com/JLanghamLopez/ts_bench/blob/main/src/ts_bench/agents/ts_task_agent/eval_generation.py?raw=true
   output_shape: [217, 5, 10]
-  ground_truth_url: some_url
+  ground_truth_file: equity_generation.npy
 -
   task_id: regime_switching_generation
   name: Regime-switching Financial Time-Series Generation
@@ -474,7 +485,8 @@
     **6. Difficulty Level**
 
     Difficulty: Advanced
-  data_url: some_url
-  eval_url: https://raw.githubusercontent.com/JLanghamLopez/ts_bench/task_description/src/ts_bench/agents/ts_task_agent/eval_generation.py
+  data_urls:
+    train: https://tsbench.blob.core.windows.net/ts-bench-data/ground_truths/regime_switching_generation.npy
+  eval_url: https://github.com/JLanghamLopez/ts_bench/blob/main/src/ts_bench/agents/ts_task_agent/eval_generation.py?raw=true
   output_shape: [2000, 20, 4]
-  ground_truth_url: some_url
+  ground_truth_file: regime_switching_generation.npy
