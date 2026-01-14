@@ -52,7 +52,7 @@ class TaskBank:
         path = Path(tasks_yaml_path)
 
         if not path.exists():
-            msg = f"Tasks JSON file not found at {tasks_yaml_path}"
+            msg = f"Tasks YAML file not found at {tasks_yaml_path}"
             logger.error(msg)
             raise FileNotFoundError(msg)
 
@@ -60,7 +60,7 @@ class TaskBank:
             with path.open("r") as f:
                 raw_tasks = yaml.safe_load(f)
         except Exception as e:
-            logger.error("Failed to parse tasks yaml (%s): %s", tasks_yaml_path, e)
+            logger.error("Failed to parse tasks YAML (%s): %s", tasks_yaml_path, e)
             raise e
 
         if not raw_tasks:
