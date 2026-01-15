@@ -14,8 +14,8 @@ PRIMARY_METRIC: dict[TaskType, str] = {
 
 DIFFICULTY_WEIGHTS: dict[TaskDifficulty, float] = {
     TaskDifficulty.EASY: 1.0,
-    TaskDifficulty.INTERMEDIATE: 1.0,
-    TaskDifficulty.ADVANCED: 1.0,
+    TaskDifficulty.INTERMEDIATE: 3.0,
+    TaskDifficulty.ADVANCED: 5.0,
 }
 
 # score = 1 / (1 + a * loss^b)
