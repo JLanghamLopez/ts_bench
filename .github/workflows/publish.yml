@@ -19,6 +19,8 @@ jobs:
             dockerfile: dockerfiles/Dockerfile.green
           - name: ts-bench-benchmark
             dockerfile: dockerfiles/Dockerfile.purple
+          - name: ts-bench-deterministic
+            dockerfile: dockerfiles/Dockerfile.deterministic
 
     # These permissions are required for the workflow to:
     # - Read repository contents (checkout code)
