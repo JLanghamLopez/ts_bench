@@ -94,7 +94,7 @@ async def main():
     async with agent_url_cm as agent_url:
         executor = PresetExecutorExecutor()
         agent_card = AgentCard(
-            name="Prest TS-Bench Purple Agent ",
+            name="Deterministic TS-Bench Purple Agent",
             description="Time series agent that returns constant results",
             url=agent_url,
             version="1.0.0",
