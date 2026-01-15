@@ -70,8 +70,8 @@ jobs:
           # Explicitly build for linux/amd64 (GitHub Actions default)
           platforms: linux/amd64
           build-args: |
-            GROUND_TRUTH_URL: '${{ secrets.GROUND_TRUTH_URL }}'
-            GROUND_TRUTH_KEY: '${{ secrets.GROUND_TRUTH_KEY }}'
+            GROUND_TRUTH_URL=${{ secrets.GROUND_TRUTH_URL }}
+            GROUND_TRUTH_KEY=${{ secrets.GROUND_TRUTH_KEY }}
 
       - name: Output image digest
         if: github.event_name != 'pull_request'
